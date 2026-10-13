@@ -1,0 +1,10 @@
+PASS HTTPS + snapshot: head
+SKIPPED WebRTC transport (SKIP_WEBRTC=1)
+PASS HTTPS + snapshot: left_wrist
+SKIPPED WebRTC transport (SKIP_WEBRTC=1)
+PASS HTTPS + snapshot: right_wrist
+SKIPPED WebRTC transport (SKIP_WEBRTC=1)
+SKIPPED ZMQ network checks (SKIP_ZMQ=1)
+PASS scene follows authoritative twin height
+PASS invalid offer + no stale snapshots after twin loss
+CAMERA CHECKS PASSED; transport checks skipped

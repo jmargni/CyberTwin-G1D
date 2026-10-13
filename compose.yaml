@@ -1,0 +1,79 @@
+name: g1d-cyber-twin
+services:
+  twin:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-0.0.0.0}:3000:3000"
+      - "${BIND_IP:-0.0.0.0}:4000:4000"
+    volumes: ["evidence:/app/data"]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  simulator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.simulator
+    restart: unless-stopped
+    environment:
+      TWIN_URL: http://twin:3000
+    ports: ["${BIND_IP:-0.0.0.0}:6003:6003"]
+    depends_on: [twin]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  adapter:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.adapter
+    restart: unless-stopped
+    environment:
+      SIMULATOR_URL: http://simulator:6003
+      WMA_BASE_URL: ${WMA_BASE_URL:-http://10.32.55.4:8000}
+      WMA_ENDPOINT: ${WMA_ENDPOINT:-/predict_action}
+      WMA_TIMEOUT: ${WMA_TIMEOUT:-120}
+      MAX_OBSERVATION_AGE: ${MAX_OBSERVATION_AGE:-10}
+    ports: ["${BIND_IP:-0.0.0.0}:6001:6001"]
+    volumes: ["evidence:/evidence"]
+    depends_on: [simulator]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  probe:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.probe
+    restart: unless-stopped
+    environment:
+      ADAPTER_URL: http://adapter:6001
+    ports: ["${BIND_IP:-0.0.0.0}:6002:6002"]
+    volumes: ["evidence:/evidence"]
+    depends_on: [adapter]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  cameras:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.camera
+    restart: unless-stopped
+    # Linux host networking preserves WebRTC ICE/UDP reachability.
+    network_mode: host
+    environment:
+      CAMERA_TWIN_URL: http://127.0.0.1:3000
+      CAMERA_HOST_IP: ${CAMERA_HOST_IP:-10.32.55.9}
+      CAMERA_WIDTH: ${CAMERA_WIDTH:-320}
+      CAMERA_HEIGHT: ${CAMERA_HEIGHT:-180}
+      CAMERA_FPS: ${CAMERA_FPS:-3}
+      CAMERA_ENABLE_ZMQ: ${CAMERA_ENABLE_ZMQ:-true}
+    volumes:
+      - camera-certs:/certs
+      - ./config/teleimager_server.yaml:/app/config/teleimager_server.yaml:ro
+    depends_on: [twin]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 2g
+    cpus: 2.0
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+volumes:
+  camera-certs:
+  evidence:

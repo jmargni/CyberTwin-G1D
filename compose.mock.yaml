@@ -1,0 +1,13 @@
+services:
+  adapter:
+    environment:
+      WMA_BASE_URL: http://mock-wma:8000
+    depends_on: [simulator, mock-wma]
+  mock-wma:
+    image: python:3.12-slim
+    user: "10001:10001"
+    volumes: ["./scripts/mock_wma.py:/app/mock_wma.py:ro"]
+    command: ["python", "/app/mock_wma.py"]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]

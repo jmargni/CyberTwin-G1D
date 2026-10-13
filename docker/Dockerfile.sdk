@@ -1,0 +1,15 @@
+# ROS Humble and its APT repository are supplied by the official base image.
+FROM ros:humble-ros-base-jammy
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates cmake g++ git build-essential libyaml-cpp-dev libeigen3-dev libboost-all-dev libfmt-dev python3 python3-pip cyclonedds-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/unitree
+RUN git clone --depth 1 https://github.com/unitreerobotics/unitree_sdk2.git && cmake -S unitree_sdk2 -B unitree_sdk2/build && cmake --build unitree_sdk2/build -j2 && cmake --install unitree_sdk2/build \
+ && git clone --depth 1 https://github.com/unitreerobotics/unitree_sdk2_python.git && pip3 install --no-cache-dir -e unitree_sdk2_python \
+ && git clone --depth 1 https://github.com/unitreerobotics/unitree_ros2.git \
+ && git clone --depth 1 https://github.com/unitreerobotics/unitree_ros.git
+COPY services/adapter/port_service.py /app/port_service.py
+COPY config /config
+RUN mkdir -p /evidence && useradd -m -u 10001 unitree && chown -R unitree:unitree /evidence
+USER unitree
+EXPOSE 6001/tcp 6001/udp
+CMD ["python3","/app/port_service.py","--name","dgs-adapter-sdk2","--port","6001"]

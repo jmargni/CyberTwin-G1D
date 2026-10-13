@@ -1,0 +1,94 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>G1-D / Comandi del PEP</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css">
+<style>.doc{max-width:980px;margin:0 auto;padding:30px 16px 60px}.doc h2{font-size:20px;margin:40px 0 12px}.doc table{margin:10px 0 20px}.doc td,.doc th{padding:10px 12px}.doc td:first-child{font-family:monospace;color:var(--lime)}.doc code{color:#c3e9a0}.doc p,.doc li{color:#c9d5e2}</style></head>
+<body><div class="doc">
+<div class="eyebrow">UNITREE / G1-D · CYBER TWIN</div>
+<h1>Comandi del PEP</h1>
+<p>Ogni comando passa dall'Action PEP del twin: viene consentito (<b>ALLOW</b>, regola G1D-200) oppure bloccato (<b>DENY</b>, regole G1D-101…108). In modalità Monitor la violazione è registrata come <b>MONITOR</b> e il comando non viene applicato. Tutte le decisioni compaiono nel SIEM. Simulazione di laboratorio: nessun robot fisico collegato; i limiti sono del laboratorio, non specifiche Unitree.</p>
+<p>Da provare nella console: vista <b>Comandi</b> (comandi pronti, consentiti e negati) e <b>Red Team</b> (payload libero).</p>
+
+<h2>Dal PEP al simulatore</h2>
+<p>Il twin cambia il proprio stato solo per i comandi <b>ALLOW</b>. Il simulatore MuJoCo avviato con <code>--twin_url</code> segue base, colonna e busto del twin; con <code>--twin_arms</code> anche bracci e mani. Così solo i comandi consentiti arrivano al simulatore; DENY e MONITOR non lo muovono.</p>
+<pre>python sim_g1_robot.py --robot g1d --twin_url http://IP-VM7:3000 --twin_arms</pre>
+<p>Il simulatore va alla posa finale di ogni comando al massimo a 1.5 rad/s (il twin salta subito alla posa finale). Con <code>--twin_arms</code> non avviare <code>robot_client.py</code>: i suoi comandi ai bracci verrebbero ignorati.</p>
+
+<h2>Richiesta</h2>
+<pre>POST /api/command
+Content-Type: application/json
+
+{"principal": "operator", "payload": {"action": "joint", "params": {"name": "right_elbow_joint", "value": 1.0}}}</pre>
+<table><thead><tr><th>Campo</th><th>Significato</th></tr></thead><tbody>
+<tr><td>principal</td><td>Chi invia il test: <code>operator</code>, <code>guest</code> o <code>defender</code>. Fixture di laboratorio, non credenziali.</td></tr>
+<tr><td>payload.action</td><td>Il comando (tabella sotto).</td></tr>
+<tr><td>payload.params</td><td>Parametri del comando (oggetto).</td></tr>
+<tr><td>payload.identity</td><td>Facoltativo, predefinito = principal. Diverso dal principal → G1D-106.</td></tr>
+<tr><td>payload.role</td><td>Facoltativo. Diverso dal principal → G1D-104.</td></tr>
+<tr><td>payload.target</td><td>Facoltativo, predefinito <code>g1d-01</code>. Altro robot → G1D-103.</td></tr>
+<tr><td>payload.via</td><td>Facoltativo, predefinito <code>pep</code>. Altro valore → G1D-108.</td></tr>
+<tr><td>payload.request_id</td><td>Facoltativo, generato se assente (1–128 caratteri). Riusato entro 60 s → G1D-105.</td></tr>
+<tr><td>payload.timestamp</td><td>Facoltativo, Unix secondi. Più di 30 s di differenza dall'ora del twin → G1D-105.</td></tr>
+</tbody></table>
+<p>Corpo massimo 16 KiB. JSON malformato o tipi errati: HTTP 400, nessun evento.</p>
+
+<h2>Comandi</h2>
+<table><thead><tr><th>action</th><th>params</th><th>Limiti (oltre → G1D-102)</th></tr></thead><tbody>
+<tr><td>status</td><td>—</td><td>Unico comando ammesso a <code>guest</code>.</td></tr>
+<tr><td>arm</td><td>—</td><td>Porta il robot in <code>armed</code>: richiesto prima di ogni movimento.</td></tr>
+<tr><td>disarm</td><td>—</td><td>Ferma la base e torna a <code>disarmed</code>.</td></tr>
+<tr><td>stop</td><td>—</td><td>Ferma la base AGV.</td></tr>
+<tr><td>estop</td><td>—</td><td>Arresto di emergenza; poi solo status, stop, estop finché la console Defense non ripristina.</td></tr>
+<tr><td>move</td><td><code>v</code> m/s, <code>w</code> rad/s, <code>duration</code> s</td><td>|v| ≤ 0.5, |w| ≤ 1, 0 &lt; duration ≤ 5.</td></tr>
+<tr><td>height</td><td><code>value</code> m</td><td>Colonna 0 … 0.42.</td></tr>
+<tr><td>joint</td><td><code>name</code> URDF, <code>value</code> rad (m se prismatico)</td><td>Joint esistente, valore entro i limiti URDF.</td></tr>
+<tr><td>gripper</td><td><code>state</code>: <code>open</code> / <code>closed</code></td><td>Solo questi due valori.</td></tr>
+<tr><td>home</td><td>—</td><td>Bracci alla posa di partenza del task (quella del simulatore), altri joint e colonna a 0, mani aperte.</td></tr>
+<tr><td>trajectory</td><td><code>joints</code>, <code>points</code>, <code>dt</code>, <code>start</code>, <code>gripper</code> (sotto)</td><td>Solo joint di spalle, gomiti, polsi; ogni punto entro i limiti URDF; velocità ≤ 3 rad/s tra punti consecutivi; 0 &lt; dt ≤ 1.</td></tr>
+</tbody></table>
+
+<h3>trajectory</h3>
+<p>Un blocco di posizioni del braccio (è il formato con cui il postino UnifoLM-WMA invia i chunk del modello).</p>
+<table><tbody>
+<tr><td>joints</td><td>Nomi URDF distinti, solo <code>*shoulder*</code>, <code>*elbow*</code>, <code>*wrist*</code>.</td></tr>
+<tr><td>points</td><td>1…64 punti, ognuno con un valore per joint.</td></tr>
+<tr><td>dt</td><td>Secondi tra due punti.</td></tr>
+<tr><td>start</td><td>Facoltativo: posa misurata prima del primo punto. Se assente, la velocità del primo punto è calcolata dalla posa attuale del twin.</td></tr>
+<tr><td>gripper</td><td>Facoltativo: <code>open</code> / <code>closed</code> alla fine del blocco.</td></tr>
+</tbody></table>
+<p>Esempio: alzare il braccio destro in 1 s (0.15 rad per 0.1 s = 1.5 rad/s).</p>
+<pre>{"action": "trajectory", "params": {"joints": ["right_shoulder_pitch_joint"], "dt": 0.1,
+ "points": [[-0.15], [-0.3], [-0.45], [-0.6], [-0.75], [-0.9], [-1.05], [-1.2], [-1.35], [-1.5]]}}</pre>
+<p>Lo stesso salto in un solo punto (<code>"points": [[-1.5]]</code>) vale 15 rad/s → DENY G1D-102.</p>
+
+<h3>Joint del braccio (limiti URDF, rad)</h3>
+<table><thead><tr><th>Joint (destro; sinistro: <code>left_…</code>)</th><th>Min</th><th>Max</th></tr></thead><tbody id="arm-limits"><tr><td colspan="3">Caricamento dal twin…</td></tr></tbody></table>
+
+<h2>Ordine dei controlli e regole</h2>
+<p>Il PEP si ferma alla prima violazione, in quest'ordine.</p>
+<table><thead><tr><th>Regola</th><th>Violazione</th><th>Quando</th></tr></thead><tbody>
+<tr><td>G1D-108</td><td>Bypass del PEP</td><td><code>via</code> diverso da <code>pep</code>.</td></tr>
+<tr><td>G1D-106</td><td>Spoofing identity</td><td><code>identity</code> diversa dal principal.</td></tr>
+<tr><td>G1D-101</td><td>Comandi non autorizzati</td><td>Principal revocato dalla console Defense, o guest con un'azione diversa da status.</td></tr>
+<tr><td>G1D-104</td><td>Escalation privilegi</td><td><code>role</code> diverso dal principal.</td></tr>
+<tr><td>G1D-103</td><td>Fuori scope</td><td>Target diverso da <code>g1d-01</code> o action sconosciuta.</td></tr>
+<tr><td>G1D-105</td><td>Replay</td><td>request_id già visto o timestamp scaduto.</td></tr>
+<tr><td>G1D-102</td><td>Manipolazione parametri</td><td>Parametri oltre i limiti (tabella Comandi).</td></tr>
+<tr><td>G1D-107</td><td>Sequence abuse</td><td>Movimento con robot non armato, o qualsiasi comando tranne status/stop/estop durante l'E-stop.</td></tr>
+<tr><td>G1D-200</td><td>ALLOW</td><td>Nessuna violazione: comando applicato al twin.</td></tr>
+</tbody></table>
+
+<h2>Da terminale</h2>
+<pre>curl -s -H 'Content-Type: application/json' \
+  -d '{"principal":"operator","payload":{"action":"arm"}}' http://IP-VM7:3000/api/command
+
+curl -s -H 'Content-Type: application/json' \
+  -d '{"principal":"operator","payload":{"action":"joint","params":{"name":"right_elbow_joint","value":3}}}' \
+  http://IP-VM7:3000/api/command          # DENY G1D-102: massimo 2.094</pre>
+<p>Altri endpoint: <code>GET /api/state</code> (stato, eventi, limiti dei joint), <code>GET /api/robot</code> (solo stato), <code>GET /api/export</code> (eventi JSONL).</p>
+</div>
+<script>
+// Arm joint limits, read from the running twin (its URDF), so the table never drifts from the PEP.
+fetch('/api/state').then(r=>r.json()).then(s=>{
+ const rows=Object.entries(s.joint_limits).filter(([n])=>n.startsWith('right_')&&/shoulder|elbow|wrist/.test(n));
+ document.getElementById('arm-limits').innerHTML=rows.map(([n,l])=>`<tr><td>${n}</td><td>${l.min.toFixed(3)}</td><td>${l.max.toFixed(3)}</td></tr>`).join('');
+}).catch(()=>{document.getElementById('arm-limits').innerHTML='<tr><td colspan="3">Twin non raggiungibile.</td></tr>';});
+</script>
+</body></html>

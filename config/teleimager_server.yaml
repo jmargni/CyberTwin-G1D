@@ -1,0 +1,31 @@
+# Configuration of the LAB virtual-camera server, not a drop-in hardware config.
+# ZMQ discovery returns only the cameras dictionary, as TeleImageClient.scan expects.
+config_port: 60000
+cameras:
+  head:
+    type: simulated_cpu
+    binocular: true
+    image_shape: [180, 640]
+    fps: 3
+    enable_zmq: true
+    zmq_port: 5555
+    enable_webrtc: true
+    webrtc_port: 60001
+  left_wrist:
+    type: simulated_cpu
+    binocular: false
+    image_shape: [180, 320]
+    fps: 3
+    enable_zmq: true
+    zmq_port: 5556
+    enable_webrtc: true
+    webrtc_port: 60002
+  right_wrist:
+    type: simulated_cpu
+    binocular: false
+    image_shape: [180, 320]
+    fps: 3
+    enable_zmq: true
+    zmq_port: 5557
+    enable_webrtc: true
+    webrtc_port: 60003

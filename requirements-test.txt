@@ -1,0 +1,2 @@
+-r requirements-wma.txt
+streamlit==1.49.1

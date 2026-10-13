@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements-wma.txt ./
+RUN pip install --no-cache-dir -r requirements-wma.txt
+COPY dgs_g1d_wma_adapter.py ./
+COPY services/adapter/app.py ./app.py
+RUN useradd -m -u 10001 adapter && mkdir /evidence && chown adapter:adapter /evidence
+USER 10001:10001
+ENV PYTHONUNBUFFERED=1
+EXPOSE 6001
+CMD ["python", "app.py"]

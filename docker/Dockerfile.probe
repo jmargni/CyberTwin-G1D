@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+RUN pip install --no-cache-dir streamlit==1.49.1
+WORKDIR /app
+COPY services/probe/app.py /app/app.py
+RUN mkdir -p /evidence && useradd -m -u 10001 probe && chown -R probe:probe /evidence
+USER probe
+EXPOSE 6002/tcp 8501/tcp
+CMD ["streamlit","run","/app/app.py","--server.address=0.0.0.0","--server.port=6002","--server.headless=true"]

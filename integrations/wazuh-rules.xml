@@ -1,0 +1,27 @@
+<!-- Wazuh MANAGER: /var/ossec/etc/rules/g1d_rules.xml
+     Verificare che gli ID 110000-110108 non siano gia utilizzati. -->
+<group name="g1d,robotics,">
+  <rule id="110000" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="source">^g1d-cyber-twin$</field>
+    <description>G1-D cyber twin event</description>
+  </rule>
+  <rule id="110001" level="3">
+    <if_sid>110000</if_sid>
+    <field name="decision">^ALLOW$</field>
+    <description>G1-D authorized command</description>
+  </rule>
+  <rule id="110002" level="5">
+    <if_sid>110000</if_sid>
+    <field name="decision">^DEFENSE$</field>
+    <description>G1-D defense action</description>
+  </rule>
+  <rule id="110101" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-101$</field><description>G1-D unauthorized command</description></rule>
+  <rule id="110102" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-102$</field><description>G1-D parameter manipulation</description></rule>
+  <rule id="110103" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-103$</field><description>G1-D out of scope request</description></rule>
+  <rule id="110104" level="10"><if_sid>110000</if_sid><field name="rule_id">^G1D-104$</field><description>G1-D privilege escalation</description></rule>
+  <rule id="110105" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-105$</field><description>G1-D replay detected</description></rule>
+  <rule id="110106" level="10"><if_sid>110000</if_sid><field name="rule_id">^G1D-106$</field><description>G1-D identity spoofing</description></rule>
+  <rule id="110107" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-107$</field><description>G1-D invalid action sequence</description></rule>
+  <rule id="110108" level="10"><if_sid>110000</if_sid><field name="rule_id">^G1D-108$</field><description>G1-D PEP bypass attempt</description></rule>
+</group>

@@ -1,0 +1,13 @@
+FROM python:3.11-slim-bookworm
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libgomp1 && rm -rf /var/lib/apt/lists/*
+COPY requirements-camera.txt ./
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements-camera.txt
+COPY services/camera ./services/camera
+COPY public/model ./public/model
+COPY config/teleimager_server.yaml ./config/teleimager_server.yaml
+RUN useradd -m -u 10001 camera && mkdir /certs && chown camera:camera /certs
+USER 10001:10001
+EXPOSE 60001 60002 60003 60000 5555 5556 5557
+CMD ["python", "-m", "services.camera.app"]

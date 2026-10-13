@@ -1,0 +1,7 @@
+<!-- Aggiungere dentro <ossec_config> sul Wazuh AGENT della VM del twin.
+     Percorso per installazione nativa in /opt/g1d-cyber-twin.
+     Adattare location al percorso effettivo e concedere all'agent lettura. -->
+<localfile>
+  <log_format>json</log_format>
+  <location>/opt/g1d-cyber-twin/data/events.jsonl</location>
+</localfile>

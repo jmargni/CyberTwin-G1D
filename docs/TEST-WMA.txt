@@ -1,0 +1,39 @@
+test_all_document_scenarios_block_with_specific_rule (test_engine.PolicyTests.test_all_document_scenarios_block_with_specific_rule) ... ok
+test_estop_latched_until_defense_reset (test_engine.PolicyTests.test_estop_latched_until_defense_reset) ... ok
+test_expired_request_rejected (test_engine.PolicyTests.test_expired_request_rejected) ... ok
+test_invalid_numbers_are_rejected (test_engine.PolicyTests.test_invalid_numbers_are_rejected) ... ok
+test_joint_limit_and_negative_height (test_engine.PolicyTests.test_joint_limit_and_negative_height) ... ok
+test_jsonl_matches_recorded_decision (test_engine.PolicyTests.test_jsonl_matches_recorded_decision) ... ok
+test_monitor_does_not_apply_invalid_action (test_engine.PolicyTests.test_monitor_does_not_apply_invalid_action) ... ok
+test_replay_is_rejected_after_first_acceptance (test_engine.PolicyTests.test_replay_is_rejected_after_first_acceptance) ... ok
+test_revoke_and_restore (test_engine.PolicyTests.test_revoke_and_restore) ... ok
+test_suite_restores_posture_and_policy (test_engine.PolicyTests.test_suite_restores_posture_and_policy) ... ok
+test_unknown_action_and_joint (test_engine.PolicyTests.test_unknown_action_and_joint) ... ok
+test_valid_action_changes_state (test_engine.PolicyTests.test_valid_action_changes_state) ... ok
+test_known_mappings (test_wma.MappingTests.test_known_mappings) ... ok
+test_non_finite (test_wma.MappingTests.test_non_finite) ... ok
+test_unknown_and_privileged (test_wma.MappingTests.test_unknown_and_privileged) ... ok
+test_user_envelopes (test_wma.MappingTests.test_user_envelopes) ... ok
+test_array_json (test_wma.PipelineTests.test_array_json) ... ok
+test_audit_and_existing_ui_suite (test_wma.PipelineTests.test_audit_and_existing_ui_suite) ... ok
+test_concurrent_cycle_rejected (test_wma.PipelineTests.test_concurrent_cycle_rejected) ... ok
+test_disarmed_blocks (test_wma.PipelineTests.test_disarmed_blocks) ... ok
+test_estop_during_inference_blocks (test_wma.PipelineTests.test_estop_during_inference_blocks) ... ok
+test_execute_changes_authoritative_twin (test_wma.PipelineTests.test_execute_changes_authoritative_twin) ... ok
+test_http_error (test_wma.PipelineTests.test_http_error) ... ok
+test_monitor_does_not_execute_invalid (test_wma.PipelineTests.test_monitor_does_not_execute_invalid) ... ok
+test_non_json (test_wma.PipelineTests.test_non_json) ... ok
+test_overspeed_blocks (test_wma.PipelineTests.test_overspeed_blocks) ... ok
+test_preview_and_live_observation (test_wma.PipelineTests.test_preview_and_live_observation) ... ok
+test_revoked_identity (test_wma.PipelineTests.test_revoked_identity) ... ok
+test_stale_observation (test_wma.PipelineTests.test_stale_observation) ... ok
+test_timeout (test_wma.PipelineTests.test_timeout) ... ok
+test_unknown_model_output (test_wma.PipelineTests.test_unknown_model_output) ... ok
+test_validation (test_wma.PipelineTests.test_validation) ... ok
+test_harness_preview_then_explicit_execution (test_wma_ui.HarnessUITest.test_harness_preview_then_explicit_execution) ... 2026-09-28 11:26:40.229 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+ok
+
+----------------------------------------------------------------------
+Ran 33 tests in 2.685s
+
+OK
