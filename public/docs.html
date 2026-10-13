@@ -7,9 +7,18 @@
 <p>Da provare nella console: vista <b>Comandi</b> (comandi pronti, consentiti e negati) e <b>Red Team</b> (payload libero).</p>
 
 <h2>Dal PEP al simulatore</h2>
-<p>Il twin cambia il proprio stato solo per i comandi <b>ALLOW</b>. Il simulatore MuJoCo avviato con <code>--twin_url</code> segue base, colonna e busto del twin; con <code>--twin_arms</code> anche bracci e mani. Così solo i comandi consentiti arrivano al simulatore; DENY e MONITOR non lo muovono.</p>
-<pre>python sim_g1_robot.py --robot g1d --twin_url http://IP-VM7:3000 --twin_arms</pre>
-<p>Il simulatore va alla posa finale di ogni comando al massimo a 1.5 rad/s (il twin salta subito alla posa finale). Con <code>--twin_arms</code> non avviare <code>robot_client.py</code>: i suoi comandi ai bracci verrebbero ignorati.</p>
+<p>Il twin cambia il proprio stato solo per i comandi <b>ALLOW</b> e non invia nulla: chi muove il robot legge lo stato con <code>GET /api/robot</code>. Così solo i comandi consentiti arrivano al simulatore; DENY e MONITOR non lo muovono. Il simulatore MuJoCo avviato con <code>--twin_url</code> segue sempre base, colonna e busto del twin. Per bracci e mani ci sono due strade.</p>
+<h3>A. Il simulatore copia il twin (2 terminali)</h3>
+<pre>python3 server.py
+python sim_g1_robot.py --robot g1d --twin_url http://IP-VM7:3000 --twin_arms</pre>
+<p>Il simulatore va alla posa del twin al massimo a 1.5 rad/s (il twin salta subito alla posa finale). Senza postino: con <code>--twin_arms</code> i comandi di <code>robot_client.py</code> ai bracci verrebbero ignorati.</p>
+<h3>B. Attraverso il postino, come il modello (4 terminali)</h3>
+<pre>python3 server.py
+python sim_g1_robot.py --robot g1d --twin_url http://IP-VM7:3000
+python twin_policy_server.py --twin_url http://IP-VM7:3000
+UNITREE_IMAGE_SERVER=127.0.0.1 python robot_client.py --control_freq 15 --pep_url http://IP-VM7:3000</pre>
+<p><code>twin_policy_server.py</code> prende il posto del modello sulla porta 8000: a ogni richiesta del postino legge lo stato del twin e risponde con 16 pose verso la posa del twin (al massimo 2.5 rad/s per joint, mani comprese); senza novità risponde «fermo». Il postino controlla il blocco con il PEP (secondo ALLOW nel SIEM) e lo invia al simulatore via DDS (<code>rt/lowcmd</code>), come per il modello. Un movimento oltre 2.7 rad su un joint si ferma a metà: ripetere il comando.</p>
+<p><b>Modello e console non possono guidare i bracci insieme.</b> Il postino interroga un solo server sulla porta 8000: il modello oppure <code>twin_policy_server.py</code>. Un comando dalla console a metà di un episodio porta il braccio in una posa che il modello non ha pianificato (l'impacchettamento fallisce), e il blocco successivo del modello, una volta consentito, sovrascrive la posa del twin. Con il modello attivo la console comanda comunque base, colonna, busto, E-STOP e disarm.</p>
 
 <h2>Richiesta</h2>
 <pre>POST /api/command
