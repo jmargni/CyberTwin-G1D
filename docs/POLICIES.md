@@ -101,6 +101,34 @@ end-pose) and logs an **ALLOW / G1D-200** event. `trajectory` mirrors only the
 last validated point onto the twin; the physical simulator executes the full
 chunk.
 
+## MITRE ATT&CK mapping (best-effort, not official)
+
+The `G1D-xxx` codes are a project convention, **not** MITRE identifiers. The
+table below is an analyst interpretation that aligns each policy to the closest
+technique — mostly **ATT&CK for ICS** (the right matrix for a cyber-physical
+robot), with **Enterprise** where the violation is really about identity or
+defeating a control. Treat the *fit* column honestly: "strong" means the
+technique describes the attack directly; "weak" means it's the nearest label for
+what is really a project-specific safety guardrail. Validate against the current
+ATT&CK release before using these in a report.
+
+| Code | Policy | Matrix | Technique | Tactic | Fit |
+|---|---|---|---|---|---|
+| G1D-101 | unauthorized | ICS | [T0855](https://attack.mitre.org/techniques/T0855/) Unauthorized Command Message | Execution / Impair Process Control | strong |
+| G1D-102 | parameters | ICS | [T0836](https://attack.mitre.org/techniques/T0836/) Modify Parameter | Impair Process Control | strong |
+| G1D-103 | scope | ICS | [T0855](https://attack.mitre.org/techniques/T0855/) Unauthorized Command Message | Execution | moderate — shares T0855 with G1D-101; distinguished by wrong target / unknown action |
+| G1D-104 | escalation | Enterprise | [T1548](https://attack.mitre.org/techniques/T1548/) Abuse Elevation Control Mechanism | Privilege Escalation | strong |
+| G1D-105 | replay | ICS | [T0830](https://attack.mitre.org/techniques/T0830/) Adversary-in-the-Middle | Collection / Lateral Movement | moderate — ATT&CK has no dedicated "replay"; AiTM is the enabling technique |
+| G1D-106 | spoofing | Enterprise | [T1036](https://attack.mitre.org/techniques/T1036/) Masquerading | Defense Evasion | strong — pairs with ICS [T0859](https://attack.mitre.org/techniques/T0859/) Valid Accounts if a real principal is impersonated |
+| G1D-107 | sequence | ICS | [T0831](https://attack.mitre.org/techniques/T0831/) Manipulation of Control | Impair Process Control | weak — a safe-state guardrail (arm/E-stop), not an adversary technique as such |
+| G1D-108 | bypass | Enterprise | [T1562](https://attack.mitre.org/techniques/T1562/) Impair Defenses | Defense Evasion | moderate — pairs with ICS [T0886](https://attack.mitre.org/techniques/T0886/) Remote Services for direct, un-mediated endpoint access |
+
+> **Wazuh note:** Wazuh rules support `<mitre><id>…</id></mitre>` tags, but the
+> manager's bundled MITRE database is **Enterprise** — the ICS `T0xxx` ids above
+> are not in it and will not resolve. If you wire these into
+> `integrations/wazuh-rules.xml`, use the Enterprise ids only (T1548, T1036,
+> T1562), or load an ICS MITRE dataset into the manager first.
+
 ## Worked examples per rule
 
 Each command reaches the PEP as `{"payload": {...}, "principal": "..."}`. On the
