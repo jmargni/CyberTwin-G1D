@@ -104,7 +104,7 @@ Unica risposta eseguibile di laboratorio (non attribuita all'API reale UnifoLM):
 | joint | name URDF e value rad o m secondo il joint |
 | gripper | state: open oppure closed |
 
-Limiti del PEP del progetto: v ±0.5 m/s, w ±1 rad/s, durata >0 e ≤5 s, colonna 0–0.42 m, limiti joint URDF. Sono limiti del lab, non specifiche hardware Unitree.
+Limiti del PEP del progetto: v ±0.5 m/s, w ±1 rad/s, durata >0 e ≤5 s, colonna 0–0.42 m, limiti joint URDF. Sono limiti del lab, non specifiche hardware Unitree. Le policy complete del PEP, l'ordine di valutazione e un esempio per ogni regola sono in [docs/POLICIES.md](docs/POLICIES.md); l'architettura e lo scopo in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 L'identità operator, il target, il timestamp e il request_id sono assegnati dall'adapter, mai dal modello. Campi di privilegio inseriti nel command causano UNMAPPED. Array di azioni, joint senza nomi, output non JSON ed errori non vengono eseguiti. Non è previsto un comando diretto su DDS.
 
