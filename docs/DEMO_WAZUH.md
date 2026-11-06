@@ -48,15 +48,18 @@ buttons on `:4000`) map to these alerts:
 | Revoke operator identity | G1D-101 unauthorized | 110101 | 8 |
 | Over-speed / bad params | G1D-102 parameters | 110102 | 8 |
 | Wrong target / unknown action | G1D-103 scope | 110103 | 8 |
-| **Privilege escalation** | G1D-104 escalation | 110104 | **10** |
+| **Privilege escalation** | G1D-104 escalation | 110104 | **12** (High) |
 | Replay a stale command | G1D-105 replay | 110105 | 8 |
-| **Identity spoofing** | G1D-106 spoofing | 110106 | **10** |
+| **Identity spoofing** | G1D-106 spoofing | 110106 | **13** (High) |
 | Move before arm (sequence) | G1D-107 sequence | 110107 | 8 |
-| **Bypass the PEP (direct DDS)** | G1D-108 bypass | 110108 | **10** |
+| **Bypass the PEP (direct DDS)** | G1D-108 bypass | 110108 | **15** (Critical) |
 | Allowed command | G1D-200 | 110001 | 3 |
 
-Escalation, spoofing and bypass are **level 10** — they're the "someone is
-attacking the control path" cases, so they stand out on the dashboard.
+Escalation, spoofing and bypass are the "someone is attacking the control path"
+cases, so they're raised to **High (12–13)** and **Critical (15)** — they fill
+the High/Critical severity tiles on the dashboard, standing out from the
+level-8 denials. Wazuh severity bands: Low 0–6, Medium 7–11, High 12–14,
+Critical 15+.
 
 ## The line to say
 
