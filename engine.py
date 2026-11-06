@@ -17,6 +17,12 @@ DESCRIPTIONS={
  'spoofing':'Identità dichiarata diversa dal principal del test.',
  'sequence':'Movimento durante lo stato disarmed.',
  'bypass':'Tentativo di accesso diretto al virtual endpoint senza passare dal PEP.'}
+# Best-effort MITRE ATT&CK mapping (ICS T0xxx / Enterprise T1xxx), for the consoles. See docs/POLICIES.md.
+ATTACK={
+ 'unauthorized':'T0855 Unauthorized Command Message','parameters':'T0836 Modify Parameter',
+ 'scope':'T0855 Unauthorized Command Message','escalation':'T1548 Abuse Elevation Control Mechanism',
+ 'replay':'T0830 Adversary-in-the-Middle','spoofing':'T1036 Masquerading',
+ 'sequence':'T0831 Manipulation of Control','bypass':'T1562 Impair Defenses'}
 # Trajectory command (chunks of arm targets from the UnifoLM-WMA postino): lab limits, not Unitree specs.
 TRAJ_MAX_POINTS=64
 TRAJ_MAX_SPEED=3.0  # rad/s; the G1 "pack camera" training data peaks at about 2.3 rad/s
@@ -58,7 +64,7 @@ class Twin:
     def snapshot(self):
         with self.lock:
             self.tick()
-            return {'robot':copy.deepcopy(self.robot),'enforce':self.enforce,'blocked':sorted(self.blocked),'events':copy.deepcopy(self.events[-200:]),'counts':{x:sum(e['decision']==x for e in self.events) for x in ['ALLOW','DENY','MONITOR','DEFENSE']},'joint_limits':self.joints,'catalog':[{'id':k,'title':v,'description':DESCRIPTIONS[k],'rule':RULES[k]} for k,v in LABELS.items()]}
+            return {'robot':copy.deepcopy(self.robot),'enforce':self.enforce,'blocked':sorted(self.blocked),'events':copy.deepcopy(self.events[-200:]),'counts':{x:sum(e['decision']==x for e in self.events) for x in ['ALLOW','DENY','MONITOR','DEFENSE']},'joint_limits':self.joints,'catalog':[{'id':k,'title':v,'description':DESCRIPTIONS[k],'rule':RULES[k],'attack':ATTACK[k]} for k,v in LABELS.items()]}
     def trajectory_error(self,params):
         """Check a trajectory: ValueError if malformed, a reason string if it breaks a lab limit, None if valid.
         params: joints (arm joint names), points (list of target lists, one value per joint), dt (s between points),
