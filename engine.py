@@ -193,6 +193,11 @@ class Twin:
             elif action=='home':
                 for k in r['joints']:r['joints'][k]=ARM_START.get(k,0.)
                 r['height']=0.;r['gripper']='open'
+            if action=='trajectory':
+                # Slim the ALLOW audit record: keep only the final target pose, not every chunk point
+                # (15 chunks/s x full joint arrays is what bloats events.jsonl). DENY records stay full.
+                pts=p['params'].get('points',[])
+                p['params']['n_points']=len(pts);p['params']['points']=pts[-1:];p['params'].pop('start',None)
             return self.event(category,'ALLOW','Eseguito: '+action,p,'G1D-200')
     def attack(self,kind):
         with self.lock:
