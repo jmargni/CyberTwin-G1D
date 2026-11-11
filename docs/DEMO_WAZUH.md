@@ -53,6 +53,7 @@ buttons on `:4000`) map to these alerts:
 | **Identity spoofing** | G1D-106 spoofing | 110106 | **13** (High) |
 | Move before arm (sequence) | G1D-107 sequence | 110107 | 8 |
 | **Bypass the PEP (direct DDS)** | G1D-108 bypass | 110108 | **15** (Critical) |
+| **Geofence / zona interdetta** | G1D-109 geofence | 110109 | **12** (High) |
 | Allowed command | G1D-200 | 110001 | 3 |
 
 Escalation, spoofing and bypass are the "someone is attacking the control path"

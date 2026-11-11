@@ -24,4 +24,5 @@
   <rule id="110106" level="13"><if_sid>110000</if_sid><field name="rule_id">^G1D-106$</field><description>G1-D identity spoofing</description></rule>
   <rule id="110107" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-107$</field><description>G1-D invalid action sequence</description></rule>
   <rule id="110108" level="15"><if_sid>110000</if_sid><field name="rule_id">^G1D-108$</field><description>G1-D PEP bypass attempt</description></rule>
+  <rule id="110109" level="12"><if_sid>110000</if_sid><field name="rule_id">^G1D-109$</field><description>G1-D geofence / zona interdetta</description></rule>
 </group>

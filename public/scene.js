@@ -52,5 +52,19 @@ export async function createScene(container) {
   }controls.update();renderer.render(scene,camera);
  }
  requestAnimationFrame(frame);
- return {update:r=>{state=r;},reset:()=>{camera.position.set(world.position.x+1.7,1.45,world.position.z+2.0);controls.target.set(world.position.x,.69,world.position.z);},wire:()=>meshes.forEach(m=>m.material.wireframe=!m.material.wireframe),meshCount:meshes.length};
+ // Geofence overlay: robot (x,y) maps to scene (x, -y) on the ground plane. Lime boundary, red keep-out zones.
+ let fenceGroup=null;
+ function setFence(gf,ko){
+  if(fenceGroup){scene.remove(fenceGroup);fenceGroup.traverse(o=>{o.geometry?.dispose?.();o.material?.dispose?.();});}
+  fenceGroup=new THREE.Group();const y=.02;
+  const loop=(x0,x1,y0,y1,color,op)=>new THREE.Line(new THREE.BufferGeometry().setFromPoints([[x0,y,-y0],[x1,y,-y0],[x1,y,-y1],[x0,y,-y1],[x0,y,-y0]].map(p=>new THREE.Vector3(...p))),new THREE.LineBasicMaterial({color,transparent:true,opacity:op}));
+  if(gf)fenceGroup.add(loop(gf.xmin,gf.xmax,gf.ymin,gf.ymax,0xc0ed79,.85));
+  for(const z of ko||[]){
+   fenceGroup.add(loop(z.xmin,z.xmax,z.ymin,z.ymax,0xff8b8f,.95));
+   const fill=new THREE.Mesh(new THREE.PlaneGeometry(z.xmax-z.xmin,z.ymax-z.ymin),new THREE.MeshBasicMaterial({color:0xff8b8f,transparent:true,opacity:.15,side:THREE.DoubleSide}));
+   fill.rotation.x=-Math.PI/2;fill.position.set((z.xmin+z.xmax)/2,y-.005,-(z.ymin+z.ymax)/2);fenceGroup.add(fill);
+  }
+  scene.add(fenceGroup);
+ }
+ return {update:r=>{state=r;},setFence,reset:()=>{camera.position.set(world.position.x+1.7,1.45,world.position.z+2.0);controls.target.set(world.position.x,.69,world.position.z);},wire:()=>meshes.forEach(m=>m.material.wireframe=!m.material.wireframe),meshCount:meshes.length};
 }
