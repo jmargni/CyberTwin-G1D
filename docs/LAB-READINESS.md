@@ -1,58 +1,58 @@
-# Lab readiness — sim vs. real G1-D comparison
+# Prontezza per il lab — confronto G1-D sim vs reale
 
-**Question:** are we ready to compare the simulated environment with the real robot in the lab?
-**Short answer:** **Yes for the security/guardrail layer and the command pipeline. Not yet for task
-performance** — the manipulation model is still training and hasn't reliably packed the camera even
-in sim, and it learned on simulator images/positions (a known sim-to-real perception gap). Friday's
-value is **measuring that gap and proving the guardrail transfers**, not demoing a finished
-pick-and-place.
+**Domanda:** siamo pronti a confrontare l'ambiente simulato con il robot reale in laboratorio?
+**Risposta breve:** **Sì per il livello di sicurezza/guardrail e per la pipeline di comando. Non ancora
+per le prestazioni del task** — il modello di manipolazione è ancora in addestramento e non ha ancora
+impacchettato la camera in modo affidabile nemmeno in simulazione, ed è stato addestrato su immagini e
+posizioni del simulatore (noto *sim-to-real gap* percettivo). Il valore di venerdì è **misurare quel
+gap e dimostrare che il guardrail si trasferisce**, non mostrare un pick-and-place finito.
 
-Keep two things separate in the conversation:
-- **PEP / security layer** — our deliverable. Tested and portable. **Ready.**
-- **Manipulation model** — still training. Not our deliverable. **Measure, don't promise.**
+Tenere separate due cose nella discussione:
+- **Livello PEP / sicurezza** — il nostro deliverable. Testato e portabile. **Pronto.**
+- **Modello di manipolazione** — ancora in training. Non è il nostro deliverable. **Si misura, non si promette.**
 
-## The pivotal item to confirm first
-**Is the PEP inline on the real robot's DDS bus, and non-bypassable?**
-Required path: model/console → **PEP** → DDS → actuators, with nothing able to publish to DDS around
-the PEP. This is exactly what rule **G1D-108 (bypass)** models. If the real DDS path doesn't go
-through the PEP, the comparison shows a guardrail that isn't in the loop — close this before committing.
+## Il punto da confermare per primo
+**Il PEP è inline sul bus DDS del robot reale ed è non aggirabile?**
+Percorso richiesto: modello/console → **PEP** → DDS → attuatori, senza che nulla possa pubblicare su
+DDS scavalcando il PEP. È esattamente ciò che modella la regola **G1D-108 (bypass)**. Se il percorso
+DDS reale non passa dal PEP, il confronto mostra un guardrail che non è nel loop — va chiuso prima di impegnarsi.
 
-## Ready vs. needs work
-| Ready | Needs calibration / work before Friday |
+## Pronto vs. da calibrare
+| Pronto | Da calibrare / da fare prima di venerdì |
 |---|---|
-| PEP enforcement — 10/10 guard suite | **PEP inline on real DDS + non-bypass proof** (pivotal) |
-| `policy.json` external policy (PDP) | Re-measure **real** workspace → geofence, keep-out, box coords |
-| Enriched audit trail (2.8-C fields) | Validate joint/speed limits vs. real G1-D safe envelope |
-| Wazuh pipeline + agent setup script | Wazuh agent on lab compute → real `events.jsonl` |
-| Operator / Red-Team consoles | Model task success on real robot is **unknown** |
-| `smoke.sh` guard verification | Conservative speeds; start in MONITOR, then ENFORCE |
+| Enforcement PEP — suite guardrail 10/10 | **PEP inline sul DDS reale + prova di non-bypass** (critico) |
+| `policy.json` — policy esterna (PDP) | Ri-misurare il workspace **reale** → geofence, zone interdette, coord. scatola |
+| Audit trail arricchito (campi 2.8-C) | Validare limiti giunto/velocità vs inviluppo di sicurezza reale del G1-D |
+| Pipeline Wazuh + script setup agent | Agent Wazuh sul PC del lab → `events.jsonl` reale |
+| Console Operator / Red-Team | Successo del task sul robot reale **sconosciuto** |
+| `smoke.sh` verifica guardrail | Velocità conservative; partenza in MONITOR, poi ENFORCE |
 
-## Friday plan
-1. **Confirm PEP inline on real DDS** + prove non-bypass.
-2. **Re-measure the real workspace** → set real geofence / keep-out / box position in `policy.json`;
-   start with conservative speeds.
-3. **Wazuh agent on lab compute** → `scripts/wazuh_agent_setup.sh`, rules already on the manager.
-4. **Run the comparison protocol** (below).
-5. **Safety:** human on the physical E-stop, keep-out zone clear, no one in reach during motion;
-   first pass in **MONITOR** (observe), then flip to **ENFORCE**.
+## Piano per venerdì
+1. **Confermare PEP inline sul DDS reale** + prova di non-bypass.
+2. **Ri-misurare il workspace reale** → impostare geofence / zone interdette / posizione scatola in
+   `policy.json`; partire con velocità conservative.
+3. **Agent Wazuh sul PC del lab** → `scripts/wazuh_agent_setup.sh`, regole già sul manager.
+4. **Eseguire il protocollo di confronto** (sotto).
+5. **Sicurezza:** persona dedicata all'E-stop fisico, zona interdetta sgombra, nessuno a portata del
+   braccio durante il movimento; prima passata in **MONITOR** (osservazione), poi **ENFORCE**.
 
-## What the comparison produces — a parity table
-For each scripted command, run it **identically on sim and real** and record:
+## Cosa produce il confronto — una tabella di parità
+Per ogni comando scriptato, eseguito **identico su sim e reale**, registrare:
 
-| Command | Sim decision | Real decision | Wazuh alert | Match |
+| Comando | Decisione sim | Decisione reale | Alert Wazuh | Coincide |
 |---|---|---|---|---|
-| Allowed arm sequence | ALLOW G1D-200 | ALLOW G1D-200 | level 3 | ✓ |
-| Over-speed params | DENY G1D-102 | DENY G1D-102 | level 8 | ✓ |
-| Privilege escalation | DENY G1D-104 | DENY G1D-104 | level 12 | ✓ |
-| Identity spoofing | DENY G1D-106 | DENY G1D-106 | level 13 | ✓ |
-| Geofence / zona interdetta | DENY G1D-109 | DENY G1D-109 | level 12 | ✓ |
-| PEP bypass (direct DDS) | DENY G1D-108 | DENY G1D-108 | level 15 | ✓ |
+| Sequenza arm consentita | ALLOW G1D-200 | ALLOW G1D-200 | livello 3 | ✓ |
+| Parametri over-speed | DENY G1D-102 | DENY G1D-102 | livello 8 | ✓ |
+| Escalation privilegi | DENY G1D-104 | DENY G1D-104 | livello 12 | ✓ |
+| Spoofing identità | DENY G1D-106 | DENY G1D-106 | livello 13 | ✓ |
+| Geofence / zona interdetta | DENY G1D-109 | DENY G1D-109 | livello 12 | ✓ |
+| Bypass del PEP (DDS diretto) | DENY G1D-108 | DENY G1D-108 | livello 15 | ✓ |
 
-Same `rule_id` / decision on both sides = **the guardrail transfers**. Plus, if the model is far
-enough along, a few **supervised** pack attempts for a qualitative perception/motion read — explicitly
-framed as "measuring the sim-to-real gap," not a pass/fail on the task.
+Stesso `rule_id` / decisione su entrambi = **il guardrail si trasferisce**. In più, se il modello è
+abbastanza avanti, qualche tentativo di **pack supervisionato** per una lettura qualitativa di
+percezione/movimento — dichiarato esplicitamente come "misura del sim-to-real gap", non come pass/fail del task.
 
-## Bottom line
-Confident, defensible **yes** to the guardrail-and-pipeline comparison next Friday. We measure the
-sim-to-real gap for the model rather than claim it's solved — and we do not go to the real robot until
-the PEP is proven inline and non-bypassable on the DDS bus.
+## In sintesi
+**Sì** convinto e difendibile al confronto di guardrail e pipeline sul robot reale venerdì prossimo.
+Misuriamo il sim-to-real gap del modello invece di dichiararlo risolto — e non si va sul robot reale
+finché il PEP non è dimostrabilmente inline e non aggirabile sul bus DDS.
