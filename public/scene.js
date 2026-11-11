@@ -53,18 +53,19 @@ export async function createScene(container) {
  }
  requestAnimationFrame(frame);
  // Geofence overlay: robot (x,y) maps to scene (x, -y) on the ground plane. Lime boundary, red keep-out zones.
+ // Drawn as filled floor strips (WebGL ignores line width, so thin outlines are invisible).
  let fenceGroup=null;
  function setFence(gf,ko){
   if(fenceGroup){scene.remove(fenceGroup);fenceGroup.traverse(o=>{o.geometry?.dispose?.();o.material?.dispose?.();});}
-  fenceGroup=new THREE.Group();const y=.02;
-  const loop=(x0,x1,y0,y1,color,op)=>new THREE.Line(new THREE.BufferGeometry().setFromPoints([[x0,y,-y0],[x1,y,-y0],[x1,y,-y1],[x0,y,-y1],[x0,y,-y0]].map(p=>new THREE.Vector3(...p))),new THREE.LineBasicMaterial({color,transparent:true,opacity:op}));
-  if(gf)fenceGroup.add(loop(gf.xmin,gf.xmax,gf.ymin,gf.ymax,0xc0ed79,.85));
-  for(const z of ko||[]){
-   fenceGroup.add(loop(z.xmin,z.xmax,z.ymin,z.ymax,0xff8b8f,.95));
-   const fill=new THREE.Mesh(new THREE.PlaneGeometry(z.xmax-z.xmin,z.ymax-z.ymin),new THREE.MeshBasicMaterial({color:0xff8b8f,transparent:true,opacity:.15,side:THREE.DoubleSide}));
-   fill.rotation.x=-Math.PI/2;fill.position.set((z.xmin+z.xmax)/2,y-.005,-(z.ymin+z.ymax)/2);fenceGroup.add(fill);
-  }
-  scene.add(fenceGroup);
+  fenceGroup=new THREE.Group();const y=.03;
+  const strip=(x0,x1,y0,y1,color,op)=>{const g=new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(x1-x0),Math.abs(y1-y0)),new THREE.MeshBasicMaterial({color,transparent:true,opacity:op,side:THREE.DoubleSide}));g.rotation.x=-Math.PI/2;g.position.set((x0+x1)/2,y,-(y0+y1)/2);return g;};
+  if(gf){const t=.05;  // four lime border strips mark the workspace boundary
+   fenceGroup.add(strip(gf.xmin,gf.xmax,gf.ymin,gf.ymin+t,0xc0ed79,.9));
+   fenceGroup.add(strip(gf.xmin,gf.xmax,gf.ymax-t,gf.ymax,0xc0ed79,.9));
+   fenceGroup.add(strip(gf.xmin,gf.xmin+t,gf.ymin,gf.ymax,0xc0ed79,.9));
+   fenceGroup.add(strip(gf.xmax-t,gf.xmax,gf.ymin,gf.ymax,0xc0ed79,.9));}
+  for(const z of ko||[])fenceGroup.add(strip(z.xmin,z.xmax,z.ymin,z.ymax,0xff8b8f,.38));
+  scene.add(fenceGroup);window.__fence=fenceGroup;console.log('[fence] drawn',gf,(ko||[]).length+' zone');
  }
  return {update:r=>{state=r;},setFence,reset:()=>{camera.position.set(world.position.x+1.7,1.45,world.position.z+2.0);controls.target.set(world.position.x,.69,world.position.z);},wire:()=>meshes.forEach(m=>m.material.wireframe=!m.material.wireframe),meshCount:meshes.length};
 }
