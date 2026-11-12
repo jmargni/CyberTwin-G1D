@@ -69,6 +69,40 @@ reale** — comandi validi eseguiti, comandi non validi bloccati prima degli att
 
 ---
 
+## H. Due modalità demo (packing vs comandi console)
+
+Twin, simulatore e client sono **identici** nelle due modalità: cambia solo cosa gira sulla
+porta 8000 (il "modello"). Solo un server per volta tiene la 8000, quindi **modello e console
+non guidano mai i bracci insieme** — è l'handoff esclusivo. (Base, colonna, busto, E-STOP e
+disarm restano guidabili dalla console anche con il modello attivo.)
+
+`scripts/demo_up.sh` avvia la sessione tmux a 4 finestre (twin, sim, model, client):
+
+```bash
+# Packing: il modello (replay) impacchetta la camera (full packing: --cover --loop, già di default)
+bash scripts/demo_up.sh
+
+# Comandi console: la Comandi page del twin guida il braccio, via postino, PEP-validata due volte
+bash scripts/demo_up.sh command
+# Su un'altra macchina, override dei path:  TWIN=~/unitreelab/DGS-CyberTwin-G1D SCRIPTS=~/unitreelab/.../scripts bash scripts/demo_up.sh command
+```
+
+Modalità **command** — sequenza operativa:
+- [ ] `arm` del robot dalla console del twin.
+- [ ] Attendere nella finestra `model` il messaggio `console commands now reach the robot`.
+- [ ] Inviare un comando dalla pagina Comandi (es. *Alza braccio DX*).
+- [ ] **Doppio ALLOW nel SIEM**: il twin valida il comando sulla pagina, poi il client ri-valida
+      il chunk sul DDS — è la prova che il PEP resta inline anche per i comandi console.
+- [ ] Se non si muove: ricaricare la vista del simulatore (`http://127.0.0.1:8080`) — la posa
+      arriva comunque, è solo il render della pagina che va aggiornato.
+- [ ] Il controllo pose-start del client (all'avvio o dopo un `arm`) riporta i bracci alla posa di
+      partenza: un comando inviato prima viene annullato — inviarlo dopo l'arm.
+
+> Nota: lo script sperimentale `twin_operator_mirror.py` pubblica su `rt/lowcmd` **bypassando** il
+> client (un solo check PEP, nessun limite di velocità). La modalità `command` qui sopra
+> (`twin_policy_server.py`) è preferibile: passa dal client, mantiene il secondo check PEP e la
+> rampa di velocità. Usare il mirror solo se serve guidare senza il client.
+
 ### Comandi di riferimento
 ```bash
 # attacco dalla console (produce un DENY)
