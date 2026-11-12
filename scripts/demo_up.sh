@@ -22,7 +22,9 @@ fi
 [ -f "$TWIN/server.py" ] || { echo "twin server.py not under TWIN=$TWIN"; exit 1; }
 [ -n "${SCRIPTS:-}" ] && [ -f "$SCRIPTS/sim_g1_robot.py" ] || { echo "postino scripts not found; set SCRIPTS=..."; exit 1; }
 HEADLESS=""; [ -z "${DISPLAY:-}" ] && HEADLESS=" --headless"   # no X display -> web view only (:8080)
-ACT="source $(conda info --base)/etc/profile.d/conda.sh && conda activate unitree_deploy && cd $SCRIPTS"
+# Bake the absolute conda path into every window (a tmux window's fresh shell may not have conda on PATH).
+SRC="source $(conda info --base)/etc/profile.d/conda.sh"
+ACT="$SRC && conda activate unitree_deploy && cd $SCRIPTS"
 
 case "$MODE" in
   packing) MODEL_WIN=replay;  MODEL_CMD="python replay_policy_server.py --cover --loop";;
@@ -33,7 +35,7 @@ esac
 tmux has-session -t $SESSION 2>/dev/null && { echo "session '$SESSION' already up — attach: tmux attach -t $SESSION"; exit 0; }
 
 # 1. twin (stdlib only, base python) — writes events.jsonl that Wazuh tails
-tmux new-session  -d -s $SESSION -n twin   "cd $TWIN && python server.py; read"
+tmux new-session  -d -s $SESSION -n twin   "$SRC && conda activate base && cd $TWIN && python server.py; read"
 # 2. simulator (MuJoCo + web view on :8080)
 tmux new-window      -t $SESSION -n sim    "$ACT && python sim_g1_robot.py --robot g1d --auto_reset --web_port 8080$HEADLESS --twin_url http://127.0.0.1:3000; read"
 # 3. port-8000 "model": replay server (packing) or twin_policy_server (console commands), no GPU
