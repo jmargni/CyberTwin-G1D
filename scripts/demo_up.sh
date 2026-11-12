@@ -7,13 +7,21 @@
 #   tmux kill-session -t g1d-demo      # tear down
 #
 # Both modes share twin, sim and client; only the port-8000 "model" differs, so the model and the
-# console never drive the arms together. Override TWIN / SCRIPTS (env) on another machine.
+# console never drive the arms together. Paths auto-detect (TWIN = this repo, SCRIPTS = the sibling
+# unifolm-* postino checkout); override TWIN / SCRIPTS (env) if your layout differs.
 set -euo pipefail
 
 MODE="${1:-packing}"
 SESSION=g1d-demo
-TWIN="${TWIN:-/home/jmargni/projects/DGS-CyberTwin-G1D}"
-SCRIPTS="${SCRIPTS:-/home/jmargni/projects/unifolm-wma-postino/unitree_deploy/scripts}"
+TWIN="${TWIN:-$(cd "$(dirname "$0")/.." && pwd)}"              # this repo (scripts/..)
+if [ -z "${SCRIPTS:-}" ]; then                                # first sibling postino checkout
+  for d in "$TWIN"/../*/unitree_deploy/scripts; do
+    [ -f "$d/sim_g1_robot.py" ] && SCRIPTS="$(cd "$d" && pwd)" && break
+  done
+fi
+[ -f "$TWIN/server.py" ] || { echo "twin server.py not under TWIN=$TWIN"; exit 1; }
+[ -n "${SCRIPTS:-}" ] && [ -f "$SCRIPTS/sim_g1_robot.py" ] || { echo "postino scripts not found; set SCRIPTS=..."; exit 1; }
+HEADLESS=""; [ -z "${DISPLAY:-}" ] && HEADLESS=" --headless"   # no X display -> web view only (:8080)
 ACT="source $(conda info --base)/etc/profile.d/conda.sh && conda activate unitree_deploy && cd $SCRIPTS"
 
 case "$MODE" in
@@ -27,7 +35,7 @@ tmux has-session -t $SESSION 2>/dev/null && { echo "session '$SESSION' already u
 # 1. twin (stdlib only, base python) — writes events.jsonl that Wazuh tails
 tmux new-session  -d -s $SESSION -n twin   "cd $TWIN && python server.py; read"
 # 2. simulator (MuJoCo + web view on :8080)
-tmux new-window      -t $SESSION -n sim    "$ACT && python sim_g1_robot.py --robot g1d --auto_reset --web_port 8080 --twin_url http://127.0.0.1:3000; read"
+tmux new-window      -t $SESSION -n sim    "$ACT && python sim_g1_robot.py --robot g1d --auto_reset --web_port 8080$HEADLESS --twin_url http://127.0.0.1:3000; read"
 # 3. port-8000 "model": replay server (packing) or twin_policy_server (console commands), no GPU
 tmux new-window      -t $SESSION -n $MODEL_WIN "$ACT && $MODEL_CMD; read"
 # 4. client — model driving the robot through the PEP (give the others a head start)
@@ -44,4 +52,4 @@ $( [ "$MODE" = command ] && echo 'console :  arm the robot, wait for "console co
 wazuh  :  https://localhost   OR  sudo tail -f /var/ossec/logs/alerts/alerts.json | jq .
 EOF
 
-tmux attach -t $SESSION
+if [ -t 1 ]; then tmux attach -t $SESSION; else echo "(no tty) attach with: tmux attach -t $SESSION"; fi
