@@ -11,7 +11,7 @@ reale** — comandi validi eseguiti, comandi non validi bloccati prima degli att
 
 ## A. Prima del lab (questa settimana)
 - [ ] **Confermare l'architettura di enforcement:** chi inoltra il comando approvato su DDS — il PEP
-      stesso oppure `robot_client` dopo l'OK del PEP. (Verificare con il team postino/Treviso.)
+      stesso oppure l'**adapter** (`robot_client`) dopo l'OK del PEP. (Verificare con il team dell'adapter/Treviso.)
 - [ ] **Config DDS reale** — `config/cyclonedds.xml`: interfaccia di rete corretta, **domain ID** del
       robot, topic dell'`unitree_sdk2`. Impostare `CYCLONEDDS_URI` se serve.
 - [ ] **Flag `robot_client` in modalità robot reale** (senza simulatore), con `--pep_url` verso il PEP.
@@ -82,7 +82,7 @@ disarm restano guidabili dalla console anche con il modello attivo.)
 # Packing: il modello (replay) impacchetta la camera (full packing: --cover --loop, già di default)
 bash scripts/demo_up.sh
 
-# Comandi console: la Comandi page del twin guida il braccio, via postino, PEP-validata due volte
+# Comandi console: la Comandi page del twin guida il braccio, via l'adapter, PEP-validata due volte
 bash scripts/demo_up.sh command
 # Su un'altra macchina, override dei path:  TWIN=~/unitreelab/DGS-CyberTwin-G1D SCRIPTS=~/unitreelab/.../scripts bash scripts/demo_up.sh command
 ```
