@@ -79,11 +79,11 @@ disarm restano guidabili dalla console anche con il modello attivo.)
 `scripts/demo_up.sh` avvia la sessione tmux a 4 finestre (twin, sim, model, client):
 
 ```bash
-# Packing: il modello (replay) impacchetta la camera (full packing: --cover --loop, già di default)
-bash scripts/demo_up.sh
+# Demo modello (loop 1): il modello (replay) impacchetta la camera (full packing: --cover --loop, già di default)
+bash scripts/demo_model.sh        # = bash scripts/demo_up.sh
 
-# Comandi console: la Comandi page del twin guida il braccio, via l'adapter, PEP-validata due volte
-bash scripts/demo_up.sh command
+# Demo comandi (loop 2): la Comandi page del twin guida il braccio, via l'adapter, PEP-validata due volte
+bash scripts/demo_command.sh      # = bash scripts/demo_up.sh command
 # Su un'altra macchina, override dei path:  TWIN=~/unitreelab/DGS-CyberTwin-G1D SCRIPTS=~/unitreelab/.../scripts bash scripts/demo_up.sh command
 ```
 
