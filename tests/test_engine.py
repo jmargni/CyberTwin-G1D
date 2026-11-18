@@ -1,7 +1,20 @@
 import tempfile,unittest,json,time
-from engine import Twin,LABELS,RULES
+from engine import Twin,LABELS,RULES,PRIVILEGED
 class PolicyTests(unittest.TestCase):
  def setUp(self):self.t=Twin()
+ def defend(self,action,value=None):return self.t.command({'action':action,'params':{} if value is None else {'value':value}},'defender')
+ def test_privileged_actions_need_defender(self):
+  self.t.defense('estop')
+  ev=self.t.command({'action':'reset'});self.assertEqual((ev['decision'],ev['rule_id']),('DENY','G1D-101'));self.assertEqual(self.t.robot['mode'],'estop')
+  ev=self.t.command({'action':'enforce','params':{'value':False}},'guest');self.assertEqual(ev['rule_id'],'G1D-101');self.assertTrue(self.t.enforce)
+  ev=self.defend('reset');self.assertEqual(ev['decision'],'DEFENSE');self.assertTrue(ev['human_override']);self.assertEqual(self.t.robot['mode'],'disarmed')
+ def test_defense_channel_refuses_risk_raising_actions(self):
+  for a in PRIVILEGED:
+   with self.subTest(a=a),self.assertRaises(ValueError):self.t.defense(a,False)
+ def test_enforce_value_must_be_boolean(self):
+  self.assertEqual(self.defend('enforce','no')['rule_id'],'G1D-102');self.assertTrue(self.t.enforce)
+ def test_monitor_cannot_be_left_by_a_non_defender(self):
+  self.defend('enforce',False);self.t.command({'action':'enforce','params':{'value':True}});self.assertFalse(self.t.enforce)
  def test_all_document_scenarios_block_with_specific_rule(self):
   for k in LABELS:
    with self.subTest(k=k):
@@ -13,11 +26,11 @@ class PolicyTests(unittest.TestCase):
  def test_expired_request_rejected(self):
   self.assertEqual(self.t.command({'action':'status','timestamp':time.time()-40})['rule_id'],'G1D-105')
  def test_estop_latched_until_defense_reset(self):
-  self.t.defense('estop');self.assertEqual(self.t.command({'action':'arm'})['decision'],'DENY');self.t.defense('reset');self.assertEqual(self.t.command({'action':'arm'})['decision'],'ALLOW')
+  self.t.defense('estop');self.assertEqual(self.t.command({'action':'arm'})['decision'],'DENY');self.defend('reset');self.assertEqual(self.t.command({'action':'arm'})['decision'],'ALLOW')
  def test_revoke_and_restore(self):
-  self.t.defense('revoke','operator');self.assertEqual(self.t.command({'action':'arm'})['rule_id'],'G1D-101');self.t.defense('restore');self.assertEqual(self.t.command({'action':'arm'})['decision'],'ALLOW')
+  self.t.defense('revoke','operator');self.assertEqual(self.t.command({'action':'arm'})['rule_id'],'G1D-101');self.defend('restore');self.assertEqual(self.t.command({'action':'arm'})['decision'],'ALLOW')
  def test_monitor_does_not_apply_invalid_action(self):
-  self.t.defense('enforce',False);self.assertEqual(self.t.attack('parameters')['decision'],'MONITOR');self.assertEqual(self.t.robot['v'],0)
+  self.defend('enforce',False);self.assertEqual(self.t.attack('parameters')['decision'],'MONITOR');self.assertEqual(self.t.robot['v'],0)
  def test_invalid_numbers_are_rejected(self):
   for value in (float('nan'),float('inf'),'5',True):
    with self.subTest(value=value):
@@ -27,7 +40,7 @@ class PolicyTests(unittest.TestCase):
  def test_joint_limit_and_negative_height(self):
   self.assertEqual(self.t.command({'action':'joint','params':{'name':'left_elbow_joint','value':100}})['rule_id'],'G1D-102');self.assertEqual(self.t.command({'action':'height','params':{'value':-.1}})['rule_id'],'G1D-102')
  def test_suite_restores_posture_and_policy(self):
-  self.t.command({'action':'arm'});self.t.command({'action':'height','params':{'value':.4}});self.t.defense('enforce',False);self.t.defense('revoke','operator');r=self.t.suite();self.assertTrue(all(x['passed'] for x in r));self.assertEqual(len(r),9);self.assertEqual(self.t.robot['height'],.4);self.assertFalse(self.t.enforce);self.assertIn('operator',self.t.blocked)
+  self.t.command({'action':'arm'});self.t.command({'action':'height','params':{'value':.4}});self.defend('enforce',False);self.t.defense('revoke','operator');r=self.t.suite();self.assertTrue(all(x['passed'] for x in r));self.assertEqual(len(r),len(LABELS)+1);self.assertEqual(self.t.robot['height'],.4);self.assertFalse(self.t.enforce);self.assertIn('operator',self.t.blocked)
  def test_jsonl_matches_recorded_decision(self):
   with tempfile.TemporaryDirectory() as p:
    t=Twin(p);e=t.attack('spoofing');events=[json.loads(x) for x in (t.log_dir/'events.jsonl').read_text().splitlines()];self.assertEqual(events[-1]['event_id'],e['event_id'])
@@ -57,7 +70,7 @@ class TrajectoryTests(unittest.TestCase):
    with self.subTest(bad=bad):
     with self.assertRaises(ValueError):self.t.command({'action':'trajectory','params':bad})
  def test_monitor_does_not_mirror_invalid_chunk(self):
-  self.t.defense('enforce',False);e=self.t.command(traj([[3,0]],start=[3,0]))
+  self.t.command({'action':'enforce','params':{'value':False}},'defender');e=self.t.command(traj([[3,0]],start=[3,0]))
   self.assertEqual(e['decision'],'MONITOR');self.assertEqual(self.t.robot['joints']['left_shoulder_pitch_joint'],0)
  def test_start_and_home_at_task_start_pose(self):
   from engine import ARM_START

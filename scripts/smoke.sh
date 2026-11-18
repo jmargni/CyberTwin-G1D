@@ -21,7 +21,7 @@ state=$(curl -s "$URL/api/state") || true
 
 # 2. external policy loaded (not the builtin default)
 pv=$(echo "$state" | jq -r '.policy_version // "null"')
-[ "$pv" = "1.0.0" ] && ok "policy.json loaded (v$pv)" || no "policy version" "got '$pv', expected 1.0.0"
+[ "$pv" = "1.1.0" ] && ok "policy.json loaded (v$pv)" || no "policy version" "got '$pv', expected 1.1.0"
 
 # 3. full guard regression suite (10/10 incl. geofence G1D-109)
 suite=$(curl -s -XPOST "$URL/api/tests" -H 'Content-Type: application/json' -d '{}')
@@ -53,7 +53,7 @@ else
 fi
 
 # leave the twin disarmed and reset
-curl -s -XPOST "$URL/api/defense" -H 'Content-Type: application/json' -d '{"action":"reset"}' >/dev/null
+curl -s -XPOST "$URL/api/command" -H 'Content-Type: application/json' -d '{"payload":{"action":"reset"},"principal":"defender"}' >/dev/null
 
 echo
 [ "$fails" -eq 0 ] && { echo -e "\033[32mall guards OK\033[0m"; exit 0; } || { echo -e "\033[31m$fails check(s) failed\033[0m"; exit 1; }

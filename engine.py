@@ -38,8 +38,12 @@ MODEL_VERSION='unifolm-wma (sim)'
 FIRMWARE_VERSION='g1d-sim'
 # PDP output: the limits/allow-lists the local PEP enforces. Loaded from policy.json (central governance) if
 # present, else these built-in defaults — "policy defined centrally, enforced locally" (RFI 2.7 / method D2).
+# Risk-raising defense actions: they clear an E-stop and move the twin back to start (reset), switch the guardrail
+# to monitor (enforce) or give back revoked identities (restore), so they pass the PEP like any command and only the
+# defender may issue them. Risk-reducing ones (estop, revoke) stay on the direct defense channel.
+PRIVILEGED=('reset','enforce','restore')
 DEFAULT_POLICY={'version':'builtin','principals':['operator','guest','defender'],
- 'actions':['arm','disarm','stop','estop','move','height','joint','gripper','home','status','trajectory'],
+ 'actions':['arm','disarm','stop','estop','move','height','joint','gripper','home','status','trajectory',*PRIVILEGED],
  'move':{'v_max':0.5,'w_max':1.0,'duration_max':5.0},'height_max':0.42,
  'trajectory':{'max_points':TRAJ_MAX_POINTS,'max_speed':TRAJ_MAX_SPEED},
  'geofence':dict(GEOFENCE),'keepout':[dict(z) for z in KEEPOUT]}
@@ -148,6 +152,7 @@ class Twin:
             if p['via']!='pep':violation='bypass';message='Virtual endpoint accetta solo richieste mediate dal PEP'
             elif p['identity']!=principal:violation='spoofing';message='Identità dichiarata non corrisponde al principal del test'
             elif principal in self.blocked or (principal=='guest' and action!='status'):violation='unauthorized';message='Principal senza autorizzazione o revocato'
+            elif action in PRIVILEGED and principal!='defender':violation='unauthorized';message='Azione riservata al defender: '+action
             elif p.get('role',principal)!=principal:violation='escalation';message='Il ruolo non può essere elevato dal payload'
             elif p['target']!='g1d-01' or action not in known:violation='scope';message='Target o azione fuori scope'
             elif p['request_id'] in self.seen or abs(time.time()-p['timestamp'])>30:violation='replay';message='Request ID duplicato o timestamp scaduto'
@@ -160,10 +165,11 @@ class Twin:
                 invalid=j not in self.joints or (j in self.joints and not self.joints[j]['min']<=v<=self.joints[j]['max'])
             elif action=='gripper':invalid=params.get('state') not in ('open','closed')
             elif action=='trajectory':detail=self.trajectory_error(params);invalid=detail is not None
+            elif action=='enforce':invalid=not isinstance(params.get('value'),bool)
             if not violation and invalid:violation='parameters';message=detail or 'Parametri oltre i limiti del lab o del modello URDF'
             if not violation and (action in ('move','height','joint','gripper','home','trajectory') and self.robot['mode']!='armed'):
                 violation='sequence';message='Sequenza non valida: arm richiesto prima del movimento'
-            if not violation and self.robot['mode']=='estop' and action not in ('status','stop','estop'):
+            if not violation and self.robot['mode']=='estop' and action not in ('status','stop','estop',*PRIVILEGED):
                 violation='sequence';message='E-stop attivo: ripristino richiesto dalla console Defense'
             if not violation and action=='move':
                 gb=self.move_would_breach(num('v'),num('w'),num('duration',1))
@@ -190,6 +196,9 @@ class Twin:
                 # The twin mirrors the end of the validated chunk; the physical simulator executes it.
                 for n,v in zip(params['joints'],params['points'][-1]):r['joints'][n]=float(v)
                 if params.get('gripper'):self.set_gripper(params['gripper'])
+            elif action=='reset':self.reset_state()
+            elif action=='enforce':self.enforce=params['value']
+            elif action=='restore':self.blocked.clear()
             elif action=='home':
                 for k in r['joints']:r['joints'][k]=ARM_START.get(k,0.)
                 r['height']=0.;r['gripper']='open'
@@ -198,6 +207,7 @@ class Twin:
                 # (15 chunks/s x full joint arrays is what bloats events.jsonl). DENY records stay full.
                 pts=p['params'].get('points',[])
                 p['params']['n_points']=len(pts);p['params']['points']=pts[-1:];p['params'].pop('start',None)
+            if action in PRIVILEGED:return self.event('defense','DEFENSE','Eseguito: '+action,p,severity='medium',human_override=True)
             return self.event(category,'ALLOW','Eseguito: '+action,p,'G1D-200')
     def attack(self,kind):
         with self.lock:
@@ -221,16 +231,13 @@ class Twin:
                 self.event('scenario-setup','INFO','Sequence abuse: twin portato in disarmed')
             return self.command(p,principal,kind)
     def defense(self,action,value=None):
+        """Direct emergency channel: only actions that reduce risk. reset/enforce/restore go through command()."""
         with self.lock:
             if action=='estop':self.robot['mode']='estop';self.robot['v']=self.robot['w']=0
-            elif action=='reset':self.reset_state()
-            elif action=='enforce':
-                if not isinstance(value,bool):raise ValueError('value booleano richiesto')
-                self.enforce=value
             elif action=='revoke':
                 if value not in ('operator','guest'):raise ValueError('Identità non valida')
                 self.blocked.add(value)
-            elif action=='restore':self.blocked.clear()
+            elif action in PRIVILEGED:raise ValueError(action+": passa dal PEP, POST /api/command con principal defender")
             else:raise ValueError('Azione Defense sconosciuta')
             return self.event('defense','DEFENSE',action+': '+str(value),severity='medium',human_override=True)
     def suite(self):

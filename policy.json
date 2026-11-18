@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "principals": ["operator", "guest", "defender"],
-  "actions": ["arm", "disarm", "stop", "estop", "move", "height", "joint", "gripper", "home", "status", "trajectory"],
+  "actions": ["arm", "disarm", "stop", "estop", "move", "height", "joint", "gripper", "home", "status", "trajectory", "reset", "enforce", "restore"],
   "move": {"v_max": 0.5, "w_max": 1.0, "duration_max": 5.0},
   "height_max": 0.42,
   "trajectory": {"max_points": 64, "max_speed": 3.0},

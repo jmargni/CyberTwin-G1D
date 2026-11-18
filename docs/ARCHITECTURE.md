@@ -49,8 +49,10 @@ demonstration purpose:
 - **8 attack scenarios** (`Twin.attack()`, rules `G1D-101..108`): unauthorized,
   parameter abuse, out-of-scope, privilege escalation, replay, spoofing,
   sequence abuse, PEP bypass
-- **Defense actions** (`Twin.defense()`): E-stop (latched), revoke identity,
-  toggle enforce↔monitor, reset
+- **Defense actions**: E-stop (latched) and revoke identity on the direct channel
+  (`Twin.defense()`, risk-reducing only); reset, enforce↔monitor and restore are
+  risk-raising, so they pass the PEP as `defender` commands (`/api/command`,
+  any other principal gets G1D-101)
 - audit → `events.jsonl` + `integrations/wazuh-rules.xml` feeding a SIEM
 
 A red-teamer fires hostile commands; the defender responds; every decision is

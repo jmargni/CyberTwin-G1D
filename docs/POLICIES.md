@@ -218,7 +218,7 @@ twin.
 |---|---|
 | `operator` | full command set (subject to all policy above) |
 | `guest` | `status` only — anything else is G1D-101 |
-| `defender` | drives `Twin.defense()` (estop, reset, enforce toggle, revoke/restore) |
+| `defender` | the only principal allowed `reset`, `enforce` and `restore` (PEP commands, G1D-101 otherwise); estop/revoke via `Twin.defense()` are open to the consoles |
 
 ## Where decisions go
 Every ALLOW / DENY / MONITOR is appended to the in-memory event ring (last 2000)

@@ -3,6 +3,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import requests
 import dgs_g1d_wma_adapter as adapter
+from engine import LABELS
 
 class MappingTests(unittest.TestCase):
     def test_user_envelopes(self):
@@ -59,9 +60,8 @@ class PipelineTests(unittest.TestCase):
         cls.temp.cleanup()
     def setUp(self):
         c=type(self);c.reply_data={'command':{'action':'status'}};c.status=200;c.delay=0;c.callback=None;c.seen=[]
-        self.twin('/api/defense',{'action':'reset'})
-        self.twin('/api/defense',{'action':'restore'})
-        self.twin('/api/defense',{'action':'enforce','value':True})
+        for a,params in (('reset',{}),('restore',{}),('enforce',{'value':True})):
+            self.twin('/api/command',{'payload':{'action':a,'params':params},'principal':'defender'})
     def twin(self,path,data):return requests.post(f'http://127.0.0.1:{self.tp}'+path,json=data,timeout=3).json()
     def cycle(self,execute=False):return requests.post(f'http://127.0.0.1:{self.ap}/cycle',json={'instruction':'stand','execute':execute},timeout=5).json()
     def state(self):return requests.get(f'http://127.0.0.1:{self.tp}/api/state',timeout=3).json()
@@ -86,7 +86,7 @@ class PipelineTests(unittest.TestCase):
         self.twin('/api/defense',{'action':'revoke','value':'operator'})
         self.assertEqual(self.cycle(True)['status'],'BLOCKED')
     def test_monitor_does_not_execute_invalid(self):
-        self.twin('/api/command',{'payload':{'action':'arm'}});self.twin('/api/defense',{'action':'enforce','value':False});self.move(99)
+        self.twin('/api/command',{'payload':{'action':'arm'}});self.twin('/api/command',{'payload':{'action':'enforce','params':{'value':False}},'principal':'defender'});self.move(99)
         r=self.cycle(True);self.assertEqual(r['pep_result']['decision'],'MONITOR');self.assertFalse(r['applied'])
     def test_unknown_model_output(self):
         type(self).reply_data={'action':[[.2,.4]]};self.assertEqual(self.cycle(True)['status'],'UNMAPPED')
@@ -115,6 +115,6 @@ class PipelineTests(unittest.TestCase):
     def test_audit_and_existing_ui_suite(self):
         r=self.cycle();rows=[json.loads(s) for s in (Path(self.temp.name)/'wma-cycles.jsonl').read_text().splitlines()]
         self.assertTrue(any(x.get('cycle_id')==r['cycle_id'] for x in rows))
-        suite=self.twin('/api/tests',{});self.assertEqual(len(suite),9);self.assertTrue(all(x['passed'] for x in suite))
+        suite=self.twin('/api/tests',{});self.assertEqual(len(suite),len(LABELS)+1);self.assertTrue(all(x['passed'] for x in suite))
 
 if __name__=='__main__':unittest.main()
