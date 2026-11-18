@@ -8,7 +8,6 @@ LABELS={
  'scope':'Chiamate fuori scope','escalation':'Escalation privilegi',
  'replay':'Replay','spoofing':'Spoofing identity','sequence':'Sequence abuse','bypass':'Bypass del PEP',
  'geofence':'Geofence / zone interdette'}
-RULES={'unauthorized':'G1D-101','parameters':'G1D-102','scope':'G1D-103','escalation':'G1D-104','replay':'G1D-105','spoofing':'G1D-106','sequence':'G1D-107','bypass':'G1D-108','geofence':'G1D-109'}
 DESCRIPTIONS={
  'unauthorized':'Identità guest tenta un movimento riservato a operator.',
  'parameters':'Velocità AGV oltre il limite della policy del laboratorio.',
@@ -26,13 +25,6 @@ ATTACK={
  'replay':'T0830 Adversary-in-the-Middle','spoofing':'T1036 Masquerading',
  'sequence':'T0831 Manipulation of Control','bypass':'T1562 Impair Defenses',
  'geofence':'T0831 Manipulation of Control'}
-# Trajectory command (chunks of arm targets from the UnifoLM-WMA postino): lab limits, not Unitree specs.
-TRAJ_MAX_POINTS=64
-TRAJ_MAX_SPEED=3.0  # rad/s; the G1 "pack camera" training data peaks at about 2.3 rad/s
-TRAJ_JOINT_KEYS=('shoulder','elbow','wrist')
-# Geofence (base motion only): lab workspace box in metres from origin, plus named keep-out zones (zone interdette).
-GEOFENCE={'xmin':-2.0,'xmax':2.0,'ymin':-2.0,'ymax':2.0}
-KEEPOUT=[{'name':'area-tecnica','xmin':0.5,'xmax':1.5,'ymin':-0.5,'ymax':0.5}]
 # Version stamps for the correlated audit trail (RFI 2.8-C). Stubbed in sim; real values come from the robot.
 MODEL_VERSION='unifolm-wma (sim)'
 FIRMWARE_VERSION='g1d-sim'
@@ -42,15 +34,33 @@ FIRMWARE_VERSION='g1d-sim'
 # to monitor (enforce) or give back revoked identities (restore), so they pass the PEP like any command and only the
 # defender may issue them. Risk-reducing ones (estop, revoke) stay on the direct defense channel.
 PRIVILEGED=('reset','enforce','restore')
-DEFAULT_POLICY={'version':'builtin','principals':['operator','guest','defender'],
- 'actions':['arm','disarm','stop','estop','move','height','joint','gripper','home','status','trajectory',*PRIVILEGED],
- 'move':{'v_max':0.5,'w_max':1.0,'duration_max':5.0},'height_max':0.42,
- 'trajectory':{'max_points':TRAJ_MAX_POINTS,'max_speed':TRAJ_MAX_SPEED},
- 'geofence':dict(GEOFENCE),'keepout':[dict(z) for z in KEEPOUT]}
+# One entry per rule: its id and parameters. The rule logic and the evaluation order live in Twin.command().
+# Trajectory limits are lab limits, not Unitree specs (the G1 "pack camera" training data peaks near 2.3 rad/s).
+# Geofence is base motion only: workspace box in metres from origin, plus named keep-out zones (zone interdette).
+DEFAULT_POLICY={'version':'builtin','principals':['operator','guest','defender'],'rules':{
+ 'bypass':{'id':'G1D-108','required_via':'pep'},
+ 'spoofing':{'id':'G1D-106'},
+ 'unauthorized':{'id':'G1D-101','guest_actions':['status'],'privileged_actions':list(PRIVILEGED),'privileged_principal':'defender'},
+ 'escalation':{'id':'G1D-104'},
+ 'scope':{'id':'G1D-103','targets':['g1d-01'],
+  'actions':['arm','disarm','stop','estop','move','height','joint','gripper','home','status','trajectory',*PRIVILEGED]},
+ 'replay':{'id':'G1D-105','max_age_s':30,'window_s':60},
+ 'parameters':{'id':'G1D-102','move':{'v_max':0.5,'w_max':1.0,'duration_max':5.0},'height_max':0.42,
+  'trajectory':{'max_points':64,'max_speed':3.0,'max_dt':1.0,'joint_keys':['shoulder','elbow','wrist']}},
+ 'sequence':{'id':'G1D-107','motion_actions':['move','height','joint','gripper','home','trajectory'],
+  'estop_allowed':['status','stop','estop',*PRIVILEGED]},
+ 'geofence':{'id':'G1D-109','box':{'xmin':-2.0,'xmax':2.0,'ymin':-2.0,'ymax':2.0},
+  'keepout':[{'name':'area-tecnica','xmin':0.5,'xmax':1.5,'ymin':-0.5,'ymax':0.5}]}}}
+RULES={k:v['id'] for k,v in DEFAULT_POLICY['rules'].items()}  # built-in ids; a running Twin uses self.R
 def load_policy(path=None):
+    """Built-in defaults overlaid, rule by rule, with policy.json. An unknown rule name is an error (typo guard)."""
     path=Path(path) if path else ROOT/'policy.json'
     p=json.loads(path.read_text()) if path.exists() else {}
-    merged=copy.deepcopy(DEFAULT_POLICY);merged.update(p);return merged
+    merged=copy.deepcopy(DEFAULT_POLICY);rules=p.pop('rules',{});merged.update(p)
+    for k,v in rules.items():
+        if k not in merged['rules']:raise ValueError('policy.json: regola sconosciuta '+k)
+        merged['rules'][k].update(v)
+    return merged
 # Start and home pose of the arms: the start of the G1 "pack camera" training episode, as robot_client.py and the
 # MuJoCo simulator use it (all zeros would put the hands through the simulator's table).
 ARM_START=dict(zip(('left_shoulder_pitch_joint','left_shoulder_roll_joint','left_shoulder_yaw_joint','left_elbow_joint','left_wrist_roll_joint','left_wrist_pitch_joint','left_wrist_yaw_joint','right_shoulder_pitch_joint','right_shoulder_roll_joint','right_shoulder_yaw_joint','right_elbow_joint','right_wrist_roll_joint','right_wrist_pitch_joint','right_wrist_yaw_joint'),
@@ -62,7 +72,8 @@ class Twin:
         if self.log_dir: self.log_dir.mkdir(parents=True,exist_ok=True)
         self.events=[];self.seen={};self.blocked=set();self.enforce=True
         self.session_id=str(uuid.uuid4());self.policy=load_policy()
-        self.geofence=dict(self.policy['geofence']);self.keepout=[dict(z) for z in self.policy['keepout']]
+        self.R=self.policy['rules']
+        self.geofence=dict(self.R['geofence']['box']);self.keepout=[dict(z) for z in self.R['geofence']['keepout']]
         self.joints={}
         for j in ET.parse(ROOT/'public/model/g1_d.urdf').getroot().findall('joint'):
             if j.get('type')=='fixed': continue
@@ -92,21 +103,21 @@ class Twin:
     def snapshot(self):
         with self.lock:
             self.tick()
-            return {'robot':copy.deepcopy(self.robot),'enforce':self.enforce,'blocked':sorted(self.blocked),'events':copy.deepcopy(self.events[-200:]),'counts':{x:sum(e['decision']==x for e in self.events) for x in ['ALLOW','DENY','MONITOR','DEFENSE']},'joint_limits':self.joints,'geofence':self.geofence,'keepout':self.keepout,'policy_version':self.policy['version'],'catalog':[{'id':k,'title':v,'description':DESCRIPTIONS[k],'rule':RULES[k],'attack':ATTACK[k]} for k,v in LABELS.items()]}
+            return {'robot':copy.deepcopy(self.robot),'enforce':self.enforce,'blocked':sorted(self.blocked),'events':copy.deepcopy(self.events[-200:]),'counts':{x:sum(e['decision']==x for e in self.events) for x in ['ALLOW','DENY','MONITOR','DEFENSE']},'joint_limits':self.joints,'geofence':self.geofence,'keepout':self.keepout,'policy_version':self.policy['version'],'catalog':[{'id':k,'title':v,'description':DESCRIPTIONS[k],'rule':self.R[k]['id'],'attack':ATTACK[k]} for k,v in LABELS.items()]}
     def trajectory_error(self,params):
         """Check a trajectory: ValueError if malformed, a reason string if it breaks a lab limit, None if valid.
         params: joints (arm joint names), points (list of target lists, one value per joint), dt (s between points),
         optional start (measured joint values before the first point) and gripper ('open'/'closed' at the end)."""
-        mp,ms=self.policy['trajectory']['max_points'],self.policy['trajectory']['max_speed']
+        t=self.R['parameters']['trajectory'];mp,ms=t['max_points'],t['max_speed']
         names,points,dt,start=params.get('joints'),params.get('points'),params.get('dt'),params.get('start')
         if not isinstance(names,list) or not names or not all(isinstance(n,str) for n in names) or len(set(names))!=len(names):raise ValueError('joints: lista di nomi distinti richiesta')
         if not isinstance(points,list) or not 1<=len(points)<=mp or not all(isinstance(q,list) and len(q)==len(names) for q in points):raise ValueError(f'points: 1..{mp} liste con un valore per joint')
         if start is not None and not (isinstance(start,list) and len(start)==len(names)):raise ValueError('start: un valore per joint')
         if not all(finite(v) for v in [dt,*(start or []),*(v for q in points for v in q)]):raise ValueError('trajectory: numeri finiti richiesti')
         if params.get('gripper') not in (None,'open','closed'):raise ValueError('gripper: open oppure closed')
-        if not 0<dt<=1:return 'Traiettoria: dt fuori da (0, 1] s'
+        if not 0<dt<=t['max_dt']:return f"Traiettoria: dt fuori da (0, {t['max_dt']}] s"
         for n in names:
-            if n not in self.joints or not any(k in n for k in TRAJ_JOINT_KEYS):return 'Traiettoria: joint non ammesso '+n
+            if n not in self.joints or not any(k in n for k in t['joint_keys']):return 'Traiettoria: joint non ammesso '+n
         prev=start if start is not None else [self.robot['joints'][n] for n in names]
         for i,q in enumerate(points):
             for n,v,v0 in zip(names,q,prev):
@@ -147,19 +158,20 @@ class Twin:
                 v=params.get(key,default)
                 if isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v):raise ValueError(key+' deve essere un numero finito')
                 return v
-            known=set(self.policy['actions'])
+            R=self.R;ua=R['unauthorized']
             violation=None;message='Policy rispettata'
-            if p['via']!='pep':violation='bypass';message='Virtual endpoint accetta solo richieste mediate dal PEP'
+            # Evaluation order: first match wins. Parameters come from policy.json (see load_policy).
+            if p['via']!=R['bypass']['required_via']:violation='bypass';message='Virtual endpoint accetta solo richieste mediate dal PEP'
             elif p['identity']!=principal:violation='spoofing';message='Identità dichiarata non corrisponde al principal del test'
-            elif principal in self.blocked or (principal=='guest' and action!='status'):violation='unauthorized';message='Principal senza autorizzazione o revocato'
-            elif action in PRIVILEGED and principal!='defender':violation='unauthorized';message='Azione riservata al defender: '+action
+            elif principal in self.blocked or (principal=='guest' and action not in ua['guest_actions']):violation='unauthorized';message='Principal senza autorizzazione o revocato'
+            elif action in ua['privileged_actions'] and principal!=ua['privileged_principal']:violation='unauthorized';message='Azione riservata al '+ua['privileged_principal']+': '+action
             elif p.get('role',principal)!=principal:violation='escalation';message='Il ruolo non può essere elevato dal payload'
-            elif p['target']!='g1d-01' or action not in known:violation='scope';message='Target o azione fuori scope'
-            elif p['request_id'] in self.seen or abs(time.time()-p['timestamp'])>30:violation='replay';message='Request ID duplicato o timestamp scaduto'
+            elif p['target'] not in R['scope']['targets'] or action not in R['scope']['actions']:violation='scope';message='Target o azione fuori scope'
+            elif p['request_id'] in self.seen or abs(time.time()-p['timestamp'])>R['replay']['max_age_s']:violation='replay';message='Request ID duplicato o timestamp scaduto'
             # Validate every numeric action even in monitor mode.
             invalid=False;detail=None
-            if action=='move':m=self.policy['move'];invalid=abs(num('v'))>m['v_max'] or abs(num('w'))>m['w_max'] or not 0<num('duration',1)<=m['duration_max']
-            elif action=='height':invalid=not 0<=num('value')<=self.policy['height_max']
+            if action=='move':m=R['parameters']['move'];invalid=abs(num('v'))>m['v_max'] or abs(num('w'))>m['w_max'] or not 0<num('duration',1)<=m['duration_max']
+            elif action=='height':invalid=not 0<=num('value')<=R['parameters']['height_max']
             elif action=='joint':
                 j=params.get('name');v=num('value')
                 invalid=j not in self.joints or (j in self.joints and not self.joints[j]['min']<=v<=self.joints[j]['max'])
@@ -167,18 +179,18 @@ class Twin:
             elif action=='trajectory':detail=self.trajectory_error(params);invalid=detail is not None
             elif action=='enforce':invalid=not isinstance(params.get('value'),bool)
             if not violation and invalid:violation='parameters';message=detail or 'Parametri oltre i limiti del lab o del modello URDF'
-            if not violation and (action in ('move','height','joint','gripper','home','trajectory') and self.robot['mode']!='armed'):
+            if not violation and (action in R['sequence']['motion_actions'] and self.robot['mode']!='armed'):
                 violation='sequence';message='Sequenza non valida: arm richiesto prima del movimento'
-            if not violation and self.robot['mode']=='estop' and action not in ('status','stop','estop',*PRIVILEGED):
+            if not violation and self.robot['mode']=='estop' and action not in R['sequence']['estop_allowed']:
                 violation='sequence';message='E-stop attivo: ripristino richiesto dalla console Defense'
             if not violation and action=='move':
                 gb=self.move_would_breach(num('v'),num('w'),num('duration',1))
                 if gb:violation='geofence';message=gb
             self.seen[p['request_id']]=time.time()
-            self.seen={k:v for k,v in self.seen.items() if time.time()-v<=60}
+            self.seen={k:v for k,v in self.seen.items() if time.time()-v<=R['replay']['window_s']}
             if violation:
                 # Monitor records a would-deny decision but never applies a failed action.
-                return self.event(category,'DENY' if self.enforce else 'MONITOR',message,p,RULES[violation],'high')
+                return self.event(category,'DENY' if self.enforce else 'MONITOR',message,p,R[violation]['id'],'high')
             r=self.robot
             if action=='arm':r['mode']='armed'
             elif action=='disarm':r['mode']='disarmed';r['v']=r['w']=0
@@ -207,7 +219,7 @@ class Twin:
                 # (15 chunks/s x full joint arrays is what bloats events.jsonl). DENY records stay full.
                 pts=p['params'].get('points',[])
                 p['params']['n_points']=len(pts);p['params']['points']=pts[-1:];p['params'].pop('start',None)
-            if action in PRIVILEGED:return self.event('defense','DEFENSE','Eseguito: '+action,p,severity='medium',human_override=True)
+            if action in ua['privileged_actions']:return self.event('defense','DEFENSE','Eseguito: '+action,p,severity='medium',human_override=True)
             return self.event(category,'ALLOW','Eseguito: '+action,p,'G1D-200')
     def attack(self,kind):
         with self.lock:
@@ -247,7 +259,8 @@ class Twin:
             try:
                 for k in LABELS:
                     self.reset_state();ev=self.attack(k)
-                    results.append({'scenario':k,'expected':RULES[k],'actual':ev['rule_id'],'passed':ev['rule_id']==RULES[k] and ev['decision']=='DENY'})
+                    rid=self.R[k]['id']
+                    results.append({'scenario':k,'expected':rid,'actual':ev['rule_id'],'passed':ev['rule_id']==rid and ev['decision']=='DENY'})
                 self.reset_state();ev=self.command({'action':'arm'})
                 results.append({'scenario':'authorized','expected':'ALLOW','actual':ev['decision'],'passed':ev['decision']=='ALLOW'})
             finally:

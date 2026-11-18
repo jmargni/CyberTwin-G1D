@@ -8,6 +8,16 @@ class PolicyTests(unittest.TestCase):
   ev=self.t.command({'action':'reset'});self.assertEqual((ev['decision'],ev['rule_id']),('DENY','G1D-101'));self.assertEqual(self.t.robot['mode'],'estop')
   ev=self.t.command({'action':'enforce','params':{'value':False}},'guest');self.assertEqual(ev['rule_id'],'G1D-101');self.assertTrue(self.t.enforce)
   ev=self.defend('reset');self.assertEqual(ev['decision'],'DEFENSE');self.assertTrue(ev['human_override']);self.assertEqual(self.t.robot['mode'],'disarmed')
+ def test_rule_parameters_come_from_policy_file(self):
+  import engine
+  with tempfile.TemporaryDirectory() as d:
+   f=d+'/policy.json'
+   json.dump({'version':'t','rules':{'parameters':{'move':{'v_max':0.1,'w_max':1.0,'duration_max':5.0}}}},open(f,'w'))
+   p=engine.load_policy(f);self.assertEqual(p['rules']['parameters']['move']['v_max'],0.1);self.assertEqual(p['rules']['geofence']['id'],'G1D-109')
+   self.t.policy=p;self.t.R=p['rules'];self.t.command({'action':'arm'})
+   self.assertEqual(self.t.command({'action':'move','params':{'v':0.2,'duration':1}})['rule_id'],'G1D-102')
+   json.dump({'rules':{'parametres':{}}},open(f,'w'))
+   with self.assertRaises(ValueError):engine.load_policy(f)
  def test_defense_channel_refuses_risk_raising_actions(self):
   for a in PRIVILEGED:
    with self.subTest(a=a),self.assertRaises(ValueError):self.t.defense(a,False)

@@ -5,6 +5,24 @@ from the WMA adapter, the red-team console, or a test — passes through it unde
 single lock. A command is processed in three stages; it must clear all three to
 be applied.
 
+The rule **logic** and evaluation order are code; every rule's **id and parameter values** are
+configuration, one entry per rule under `rules` in `policy.json` (built-in defaults in
+`DEFAULT_POLICY`, overlaid rule by rule; an unknown rule name stops the twin at startup):
+
+| Rule | `policy.json` → `rules.<name>` |
+|---|---|
+| G1D-108 `bypass` | `required_via` |
+| G1D-106 `spoofing` | — (identity must equal principal) |
+| G1D-101 `unauthorized` | `guest_actions`, `privileged_actions`, `privileged_principal` |
+| G1D-104 `escalation` | — (role must equal principal) |
+| G1D-103 `scope` | `targets`, `actions` |
+| G1D-105 `replay` | `max_age_s`, `window_s` |
+| G1D-102 `parameters` | `move` (`v_max`, `w_max`, `duration_max`), `height_max`, `trajectory` (`max_points`, `max_speed`, `max_dt`, `joint_keys`); joint limits from the URDF |
+| G1D-107 `sequence` | `motion_actions`, `estop_allowed` |
+| G1D-109 `geofence` | `box`, `keepout` |
+
+Edit `policy.json`, bump `version`, restart `server.py`; every event carries `policy_version`.
+
 ## Stage 0 — defaults the PEP assigns (never the caller's to spoof usefully)
 
 Before any check, the PEP deep-copies the payload and fills missing fields:

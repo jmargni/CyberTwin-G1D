@@ -1,12 +1,50 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "principals": ["operator", "guest", "defender"],
-  "actions": ["arm", "disarm", "stop", "estop", "move", "height", "joint", "gripper", "home", "status", "trajectory", "reset", "enforce", "restore"],
-  "move": {"v_max": 0.5, "w_max": 1.0, "duration_max": 5.0},
-  "height_max": 0.42,
-  "trajectory": {"max_points": 64, "max_speed": 3.0},
-  "geofence": {"xmin": -2.0, "xmax": 2.0, "ymin": -2.0, "ymax": 2.0},
-  "keepout": [
-    {"name": "area-tecnica", "xmin": 0.5, "xmax": 1.5, "ymin": -0.5, "ymax": 0.5}
-  ]
+  "rules": {
+    "bypass": {
+      "id": "G1D-108",
+      "required_via": "pep"
+    },
+    "spoofing": {
+      "id": "G1D-106"
+    },
+    "unauthorized": {
+      "id": "G1D-101",
+      "guest_actions": ["status"],
+      "privileged_actions": ["reset", "enforce", "restore"],
+      "privileged_principal": "defender"
+    },
+    "escalation": {
+      "id": "G1D-104"
+    },
+    "scope": {
+      "id": "G1D-103",
+      "targets": ["g1d-01"],
+      "actions": ["arm", "disarm", "stop", "estop", "move", "height", "joint", "gripper", "home", "status", "trajectory", "reset", "enforce", "restore"]
+    },
+    "replay": {
+      "id": "G1D-105",
+      "max_age_s": 30,
+      "window_s": 60
+    },
+    "parameters": {
+      "id": "G1D-102",
+      "move": {"v_max": 0.5, "w_max": 1.0, "duration_max": 5.0},
+      "height_max": 0.42,
+      "trajectory": {"max_points": 64, "max_speed": 3.0, "max_dt": 1.0, "joint_keys": ["shoulder", "elbow", "wrist"]}
+    },
+    "sequence": {
+      "id": "G1D-107",
+      "motion_actions": ["move", "height", "joint", "gripper", "home", "trajectory"],
+      "estop_allowed": ["status", "stop", "estop", "reset", "enforce", "restore"]
+    },
+    "geofence": {
+      "id": "G1D-109",
+      "box": {"xmin": -2.0, "xmax": 2.0, "ymin": -2.0, "ymax": 2.0},
+      "keepout": [
+        {"name": "area-tecnica", "xmin": 0.5, "xmax": 1.5, "ymin": -0.5, "ymax": 0.5}
+      ]
+    }
+  }
 }

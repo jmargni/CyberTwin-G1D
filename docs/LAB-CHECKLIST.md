@@ -38,7 +38,7 @@ reale** — comandi validi eseguiti, comandi non validi bloccati prima degli att
       guardrail **non è nel loop**: fermarsi qui e chiudere quel percorso prima di proseguire.
 
 ## D. Calibrazione limiti reali (prima dei comandi validi)
-- [ ] **Misurare il workspace reale** → impostare in `policy.json`: `geofence` (box), `keepout`
+- [ ] **Misurare il workspace reale** → impostare in `policy.json` → `rules.geofence`: `box`, `keepout`
       (zone interdette), posizione reale della scatola.
 - [ ] **Limiti giunto/velocità** vs inviluppo di sicurezza reale del G1-D: partire **sotto** le soglie
       Unitree, poi alzare gradualmente.
