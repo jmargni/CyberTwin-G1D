@@ -1,4 +1,5 @@
 import tempfile,unittest,json,time
+from pathlib import Path
 from engine import Twin,LABELS,RULES,PRIVILEGED
 class PolicyTests(unittest.TestCase):
  def setUp(self):self.t=Twin()
@@ -12,12 +13,42 @@ class PolicyTests(unittest.TestCase):
   import engine
   with tempfile.TemporaryDirectory() as d:
    f=d+'/policy.json'
-   json.dump({'version':'t','rules':{'parameters':{'move':{'v_max':0.1,'w_max':1.0,'duration_max':5.0}}}},open(f,'w'))
+   Path(f).write_text(json.dumps({'version':'t','rules':{'parameters':{'move':{'v_max':0.1,'w_max':1.0,'duration_max':5.0}}}}))
    p=engine.load_policy(f);self.assertEqual(p['rules']['parameters']['move']['v_max'],0.1);self.assertEqual(p['rules']['geofence']['id'],'G1D-109')
    self.t.policy=p;self.t.R=p['rules'];self.t.command({'action':'arm'})
    self.assertEqual(self.t.command({'action':'move','params':{'v':0.2,'duration':1}})['rule_id'],'G1D-102')
-   json.dump({'rules':{'parametres':{}}},open(f,'w'))
+   Path(f).write_text(json.dumps({'rules':{'parametres':{}}}))
    with self.assertRaises(ValueError):engine.load_policy(f)
+ def test_flooding_is_limited_but_stop_never_is(self):
+  t=self.t;n=t.R['rate']['max_per_s']
+  for _ in range(n):self.assertEqual(t.command({'action':'status'})['decision'],'ALLOW')
+  self.assertEqual(t.command({'action':'status'})['rule_id'],'G1D-110')
+  self.assertEqual(t.command({'action':'estop'})['decision'],'ALLOW');self.assertEqual(t.robot['mode'],'estop')
+ def test_repeated_security_violations_lock_the_principal_out(self):
+  t=self.t;n=t.R['lockout']['max_violations']
+  for i in range(n-1):self.assertEqual(t.command({'action':'status','target':'g1d-02'})['rule_id'],'G1D-103')
+  ev=t.command({'action':'status','target':'g1d-02'});self.assertEqual((ev['decision'],ev['rule_id']),('DENY','G1D-111'))
+  self.assertEqual(t.command({'action':'status'})['rule_id'],'G1D-101')  # quarantined, even for a valid command
+  for i in range(n):t.command({'action':'status','target':'g1d-02'},'defender')
+  self.assertNotIn('defender',t.blocked)                                 # recovery identity is never locked out
+  self.assertEqual(self.defend('restore')['decision'],'DEFENSE');self.assertEqual(t.command({'action':'status'})['decision'],'ALLOW')
+ def test_red_team_buttons_do_not_quarantine_the_operator(self):
+  for k in ('scope','spoofing','escalation','bypass','scope','scope'):self.t.attack(k)
+  self.assertNotIn('operator',self.t.blocked)
+ def test_stale_motion_command_is_refused(self):
+  t=self.t;t.command({'action':'arm'})
+  ev=t.command({'action':'move','params':{'v':.1,'duration':1},'timestamp':time.time()-10})
+  self.assertEqual(ev['rule_id'],'G1D-105')
+  self.assertEqual(t.command({'action':'status','timestamp':time.time()-10})['decision'],'ALLOW')  # status keeps the 30 s window
+ def test_audit_log_is_hash_chained_and_tamper_evident(self):
+  import engine
+  with tempfile.TemporaryDirectory() as d:
+   t=Twin(d);t.command({'action':'arm'});t.command({'action':'move','params':{'v':9}})
+   log=d+'/events.jsonl';self.assertEqual(engine.verify_log(log),(3,None))
+   t2=Twin(d);self.assertEqual(engine.verify_log(log),(4,None))           # chain continues across restarts
+   lines=Path(log).read_text().splitlines();ev=json.loads(lines[2]);ev['decision']='ALLOW';lines[2]=json.dumps(ev)
+   Path(log).write_text('\n'.join(lines)+'\n');self.assertEqual(engine.verify_log(log)[0],3)
+   del lines[2];Path(log).write_text('\n'.join(lines)+'\n');self.assertEqual(engine.verify_log(log)[0],3)
  def test_defense_channel_refuses_risk_raising_actions(self):
   for a in PRIVILEGED:
    with self.subTest(a=a),self.assertRaises(ValueError):self.t.defense(a,False)

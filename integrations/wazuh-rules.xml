@@ -1,5 +1,5 @@
 <!-- Wazuh MANAGER: /var/ossec/etc/rules/g1d_rules.xml
-     Verificare che gli ID 110000-110108 non siano gia utilizzati. -->
+     Verificare che gli ID 110000-110111 non siano gia utilizzati. -->
 <group name="g1d,robotics,">
   <rule id="110000" level="0">
     <decoded_as>json</decoded_as>
@@ -25,4 +25,6 @@
   <rule id="110107" level="8"><if_sid>110000</if_sid><field name="rule_id">^G1D-107$</field><description>G1-D invalid action sequence</description></rule>
   <rule id="110108" level="15"><if_sid>110000</if_sid><field name="rule_id">^G1D-108$</field><description>G1-D PEP bypass attempt</description></rule>
   <rule id="110109" level="12"><if_sid>110000</if_sid><field name="rule_id">^G1D-109$</field><description>G1-D geofence / zona interdetta</description></rule>
+  <rule id="110110" level="10"><if_sid>110000</if_sid><field name="rule_id">^G1D-110$</field><description>G1-D command flooding (DoS)</description></rule>
+  <rule id="110111" level="12"><if_sid>110000</if_sid><field name="rule_id">^G1D-111$</field><description>G1-D principal locked out after repeated security violations</description></rule>
 </group>

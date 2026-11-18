@@ -1,5 +1,5 @@
 """Deterministic local cyber twin. No shell execution, DDS or physical robot I/O."""
-import copy, json, math, threading, time, uuid, xml.etree.ElementTree as ET
+import copy, hashlib, json, math, os, threading, time, uuid, xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime, timezone
 ROOT=Path(__file__).resolve().parent
@@ -7,7 +7,7 @@ LABELS={
  'unauthorized':'Comandi non autorizzati','parameters':'Manipolazione parametri',
  'scope':'Chiamate fuori scope','escalation':'Escalation privilegi',
  'replay':'Replay','spoofing':'Spoofing identity','sequence':'Sequence abuse','bypass':'Bypass del PEP',
- 'geofence':'Geofence / zone interdette'}
+ 'geofence':'Geofence / zone interdette','rate':'Flooding / DoS','lockout':'Brute force / probing'}
 DESCRIPTIONS={
  'unauthorized':'Identità guest tenta un movimento riservato a operator.',
  'parameters':'Velocità AGV oltre il limite della policy del laboratorio.',
@@ -17,14 +17,16 @@ DESCRIPTIONS={
  'spoofing':'Identità dichiarata diversa dal principal del test.',
  'sequence':'Movimento durante lo stato disarmed.',
  'bypass':'Tentativo di accesso diretto al virtual endpoint senza passare dal PEP.',
- 'geofence':'Comando move che porterebbe la base fuori dal geofence o dentro una zona interdetta.'}
+ 'geofence':'Comando move che porterebbe la base fuori dal geofence o dentro una zona interdetta.',
+ 'rate':'Raffica di comandi oltre il limite al secondo (DoS sul canale comandi). Stop/E-stop mai limitati.',
+ 'lockout':'Violazioni di sicurezza ripetute: identità messa in quarantena (revocata). Richiede Restore dalla console Defense.'}
 # Best-effort MITRE ATT&CK mapping (ICS T0xxx / Enterprise T1xxx), for the consoles. See docs/POLICIES.md.
 ATTACK={
  'unauthorized':'T0855 Unauthorized Command Message','parameters':'T0836 Modify Parameter',
  'scope':'T0855 Unauthorized Command Message','escalation':'T1548 Abuse Elevation Control Mechanism',
  'replay':'T0830 Adversary-in-the-Middle','spoofing':'T1036 Masquerading',
  'sequence':'T0831 Manipulation of Control','bypass':'T1562 Impair Defenses',
- 'geofence':'T0831 Manipulation of Control'}
+ 'geofence':'T0831 Manipulation of Control','rate':'T0814 Denial of Service','lockout':'T1110 Brute Force'}
 # Version stamps for the correlated audit trail (RFI 2.8-C). Stubbed in sim; real values come from the robot.
 MODEL_VERSION='unifolm-wma (sim)'
 FIRMWARE_VERSION='g1d-sim'
@@ -44,17 +46,23 @@ DEFAULT_POLICY={'version':'builtin','principals':['operator','guest','defender']
  'escalation':{'id':'G1D-104'},
  'scope':{'id':'G1D-103','targets':['g1d-01'],
   'actions':['arm','disarm','stop','estop','move','height','joint','gripper','home','status','trajectory',*PRIVILEGED]},
- 'replay':{'id':'G1D-105','max_age_s':30,'window_s':60},
+ 'replay':{'id':'G1D-105','max_age_s':30,'motion_max_age_s':5,'window_s':60},
  'parameters':{'id':'G1D-102','move':{'v_max':0.5,'w_max':1.0,'duration_max':5.0},'height_max':0.42,
   'trajectory':{'max_points':64,'max_speed':3.0,'max_dt':1.0,'joint_keys':['shoulder','elbow','wrist']}},
  'sequence':{'id':'G1D-107','motion_actions':['move','height','joint','gripper','home','trajectory'],
   'estop_allowed':['status','stop','estop',*PRIVILEGED]},
  'geofence':{'id':'G1D-109','box':{'xmin':-2.0,'xmax':2.0,'ymin':-2.0,'ymax':2.0},
-  'keepout':[{'name':'area-tecnica','xmin':0.5,'xmax':1.5,'ymin':-0.5,'ymax':0.5}]}}}
+  'keepout':[{'name':'area-tecnica','xmin':0.5,'xmax':1.5,'ymin':-0.5,'ymax':0.5}]},
+ # Availability: commands per principal per second; risk-reducing actions are never rate-limited.
+ 'rate':{'id':'G1D-110','max_per_s':20,'exempt_actions':['stop','estop']},
+ # Quarantine: N security violations (not safety ones) in a window revoke the principal until a defender Restore.
+ 'lockout':{'id':'G1D-111','max_violations':5,'window_s':60,
+  'counted_rules':['bypass','spoofing','unauthorized','escalation','scope','replay','rate'],'exempt_principals':['defender']}}}
 RULES={k:v['id'] for k,v in DEFAULT_POLICY['rules'].items()}  # built-in ids; a running Twin uses self.R
 def load_policy(path=None):
-    """Built-in defaults overlaid, rule by rule, with policy.json. An unknown rule name is an error (typo guard)."""
-    path=Path(path) if path else ROOT/'policy.json'
+    """Built-in defaults overlaid, rule by rule, with policy.json (or $TWIN_POLICY, e.g. a lab policy).
+    An unknown rule name is an error (typo guard)."""
+    path=Path(path or os.getenv('TWIN_POLICY') or ROOT/'policy.json')
     p=json.loads(path.read_text()) if path.exists() else {}
     merged=copy.deepcopy(DEFAULT_POLICY);rules=p.pop('rules',{});merged.update(p)
     for k,v in rules.items():
@@ -65,13 +73,35 @@ def load_policy(path=None):
 # MuJoCo simulator use it (all zeros would put the hands through the simulator's table).
 ARM_START=dict(zip(('left_shoulder_pitch_joint','left_shoulder_roll_joint','left_shoulder_yaw_joint','left_elbow_joint','left_wrist_roll_joint','left_wrist_pitch_joint','left_wrist_yaw_joint','right_shoulder_pitch_joint','right_shoulder_roll_joint','right_shoulder_yaw_joint','right_elbow_joint','right_wrist_roll_joint','right_wrist_pitch_joint','right_wrist_yaw_joint'),
  (-0.50163078,0.32051945,0.18178487,0.6838522,-0.085745335,-0.51033354,-0.25062084,-0.40424705,-0.26256371,-0.20069599,0.21123028,0.1912303,-0.20726478,0.28874797)))
+GENESIS='0'*64
+def event_hash(ev):return hashlib.sha256(json.dumps({k:v for k,v in ev.items() if k!='hash'},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+def last_hash(path):
+    try:
+        with open(path,'rb') as f:
+            f.seek(0,2);f.seek(max(0,f.tell()-262144));return json.loads(f.read().splitlines()[-1]).get('hash',GENESIS)
+    except (OSError,IndexError,ValueError):return GENESIS
+def verify_log(path):
+    """Check the events.jsonl hash chain. Returns (events checked, None) or (line number, reason) at the first break."""
+    prev=None;n=0
+    for i,line in enumerate(Path(path).read_text().splitlines(),1):
+        if not line.strip():continue
+        ev=json.loads(line)
+        if 'hash' not in ev:continue  # written before the chain existed
+        if event_hash(ev)!=ev['hash']:return i,'evento modificato'
+        if prev is not None and ev['prev_hash']!=prev:return i,'catena interrotta (evento rimosso o inserito)'
+        prev=ev['hash'];n+=1
+    return n,None
 def finite(v):return not isinstance(v,bool) and isinstance(v,(float,int)) and math.isfinite(v)
 class Twin:
     def __init__(self,log_dir=None):
         self.lock=threading.RLock(); self.log_dir=Path(log_dir) if log_dir else None
         if self.log_dir: self.log_dir.mkdir(parents=True,exist_ok=True)
-        self.events=[];self.seen={};self.blocked=set();self.enforce=True
+        self.events=[];self.seen={};self.blocked=set();self.enforce=True;self.rate={};self.strikes={}
         self.session_id=str(uuid.uuid4());self.policy=load_policy()
+        # Evidence of tampering: the effective policy's digest goes on every event, and events form a hash chain
+        # (each carries the previous event's hash), continued across restarts from the last line of the log.
+        self.policy_sha256=hashlib.sha256(json.dumps(self.policy,sort_keys=True).encode()).hexdigest()
+        self.last_hash=last_hash(self.log_dir/'events.jsonl') if self.log_dir else GENESIS
         self.R=self.policy['rules']
         self.geofence=dict(self.R['geofence']['box']);self.keepout=[dict(z) for z in self.R['geofence']['keepout']]
         self.joints={}
@@ -94,8 +124,9 @@ class Twin:
         # Safety envelope: halt the base if it reaches the geofence, even if admission missed it.
         if self.geofence_breach(r['x'],r['y']):r['v']=r['w']=0.
     def event(self,category,decision,message,request=None,rule=None,severity='info',human_override=False):
-        ev={'timestamp':datetime.now(timezone.utc).isoformat(),'event_id':str(uuid.uuid4()),'source':'g1d-cyber-twin','robot_id':'g1d-01','session_id':self.session_id,'category':category,'decision':decision,'message':message,'rule_id':rule or 'G1D-000','severity':severity,'simulation':True,'safety_state':self.robot['mode'] if getattr(self,'robot',None) else 'init','human_override':human_override,'model_version':MODEL_VERSION,'firmware_version':FIRMWARE_VERSION,'policy_version':self.policy['version']}
+        ev={'timestamp':datetime.now(timezone.utc).isoformat(),'event_id':str(uuid.uuid4()),'source':'g1d-cyber-twin','robot_id':'g1d-01','session_id':self.session_id,'category':category,'decision':decision,'message':message,'rule_id':rule or 'G1D-000','severity':severity,'simulation':True,'safety_state':self.robot['mode'] if getattr(self,'robot',None) else 'init','human_override':human_override,'model_version':MODEL_VERSION,'firmware_version':FIRMWARE_VERSION,'policy_version':self.policy['version'],'policy_sha256':self.policy_sha256}
         if request is not None:ev['request']=copy.deepcopy(request)
+        ev['prev_hash']=self.last_hash;ev['hash']=self.last_hash=event_hash(ev)
         self.events.append(ev);self.events=self.events[-2000:]
         if self.log_dir:
             with (self.log_dir/'events.jsonl').open('a') as f:f.write(json.dumps(ev,ensure_ascii=False)+'\n')
@@ -158,16 +189,21 @@ class Twin:
                 v=params.get(key,default)
                 if isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v):raise ValueError(key+' deve essere un numero finito')
                 return v
-            R=self.R;ua=R['unauthorized']
+            R=self.R;ua=R['unauthorized'];now=time.monotonic()
+            limited=action not in R['rate']['exempt_actions']
+            hist=[t for t in self.rate.get(principal,[]) if now-t<1.0]+([now] if limited else []);self.rate[principal]=hist
+            age=abs(time.time()-p['timestamp'])
             violation=None;message='Policy rispettata'
             # Evaluation order: first match wins. Parameters come from policy.json (see load_policy).
             if p['via']!=R['bypass']['required_via']:violation='bypass';message='Virtual endpoint accetta solo richieste mediate dal PEP'
+            elif limited and len(hist)>R['rate']['max_per_s']:violation='rate';message=f"Flooding: oltre {R['rate']['max_per_s']} comandi/s da {principal}"
             elif p['identity']!=principal:violation='spoofing';message='Identità dichiarata non corrisponde al principal del test'
             elif principal in self.blocked or (principal=='guest' and action not in ua['guest_actions']):violation='unauthorized';message='Principal senza autorizzazione o revocato'
             elif action in ua['privileged_actions'] and principal!=ua['privileged_principal']:violation='unauthorized';message='Azione riservata al '+ua['privileged_principal']+': '+action
             elif p.get('role',principal)!=principal:violation='escalation';message='Il ruolo non può essere elevato dal payload'
             elif p['target'] not in R['scope']['targets'] or action not in R['scope']['actions']:violation='scope';message='Target o azione fuori scope'
-            elif p['request_id'] in self.seen or abs(time.time()-p['timestamp'])>R['replay']['max_age_s']:violation='replay';message='Request ID duplicato o timestamp scaduto'
+            elif p['request_id'] in self.seen or age>R['replay']['max_age_s']:violation='replay';message='Request ID duplicato o timestamp scaduto'
+            elif action in R['sequence']['motion_actions'] and age>R['replay']['motion_max_age_s']:violation='replay';message=f"Comando di movimento non fresco ({age:.1f} s, max {R['replay']['motion_max_age_s']} s)"
             # Validate every numeric action even in monitor mode.
             invalid=False;detail=None
             if action=='move':m=R['parameters']['move'];invalid=abs(num('v'))>m['v_max'] or abs(num('w'))>m['w_max'] or not 0<num('duration',1)<=m['duration_max']
@@ -186,6 +222,12 @@ class Twin:
             if not violation and action=='move':
                 gb=self.move_would_breach(num('v'),num('w'),num('duration',1))
                 if gb:violation='geofence';message=gb
+            lk=R['lockout']
+            if violation in lk['counted_rules'] and principal not in lk['exempt_principals'] and principal not in self.blocked:
+                st=[t for t in self.strikes.get(principal,[]) if now-t<lk['window_s']]+[now];self.strikes[principal]=st
+                if len(st)>=lk['max_violations']:
+                    if self.enforce:self.blocked.add(principal);self.strikes.pop(principal,None)
+                    violation='lockout';message=f"Lockout: {len(st)} violazioni di sicurezza in {lk['window_s']} s, {principal} revocato (Restore dalla console Defense)"
             self.seen[p['request_id']]=time.time()
             self.seen={k:v for k,v in self.seen.items() if time.time()-v<=R['replay']['window_s']}
             if violation:
@@ -210,7 +252,7 @@ class Twin:
                 if params.get('gripper'):self.set_gripper(params['gripper'])
             elif action=='reset':self.reset_state()
             elif action=='enforce':self.enforce=params['value']
-            elif action=='restore':self.blocked.clear()
+            elif action=='restore':self.blocked.clear();self.strikes.clear()
             elif action=='home':
                 for k in r['joints']:r['joints'][k]=ARM_START.get(k,0.)
                 r['height']=0.;r['gripper']='open'
@@ -237,11 +279,22 @@ class Twin:
                 p={'action':'move','params':{'v':.5,'w':0.,'duration':5}}
             elif kind=='replay':
                 p={'action':'status','request_id':str(uuid.uuid4())};self.command(p,category='replay-setup')
+            elif kind=='rate':
+                self.rate[principal]=[time.monotonic()]*self.R['rate']['max_per_s']
+                self.event('scenario-setup','INFO',f"Flooding: {self.R['rate']['max_per_s']} comandi nell'ultimo secondo da {principal}")
+            elif kind=='lockout':
+                n=self.R['lockout']['max_violations']-1;self.strikes[principal]=[time.monotonic()]*n;p['target']='g1d-02'
+                self.event('scenario-setup','INFO',f'Brute force: {n} violazioni di sicurezza recenti da {principal}')
             elif kind=='sequence':
                 # The fixture explicitly disarms; both consoles see the change.
                 self.robot['mode']='disarmed';self.robot['v']=self.robot['w']=0
                 self.event('scenario-setup','INFO','Sequence abuse: twin portato in disarmed')
-            return self.command(p,principal,kind)
+            # Demo fixtures are sandboxed: they don't count toward lockout or rate (except their own scenario),
+            # so pressing Red Team buttons does not quarantine the operator the model adapter runs as.
+            saved=(copy.deepcopy(self.rate),copy.deepcopy(self.strikes))
+            try:return self.command(p,principal,kind)
+            finally:
+                if kind!='lockout':self.rate,self.strikes=saved
     def defense(self,action,value=None):
         """Direct emergency channel: only actions that reduce risk. reset/enforce/restore go through command()."""
         with self.lock:
@@ -254,16 +307,20 @@ class Twin:
             return self.event('defense','DEFENSE',action+': '+str(value),severity='medium',human_override=True)
     def suite(self):
         with self.lock:
-            saved=copy.deepcopy(self.robot);blocked=self.blocked.copy();enforce=self.enforce
+            saved=copy.deepcopy(self.robot);blocked=self.blocked.copy();enforce=self.enforce;counters=(self.rate,self.strikes)
             self.blocked.clear();self.enforce=True;results=[]
             try:
                 for k in LABELS:
-                    self.reset_state();ev=self.attack(k)
+                    self.reset_state();self.blocked.clear();self.rate={};self.strikes={};ev=self.attack(k)
                     rid=self.R[k]['id']
                     results.append({'scenario':k,'expected':rid,'actual':ev['rule_id'],'passed':ev['rule_id']==rid and ev['decision']=='DENY'})
-                self.reset_state();ev=self.command({'action':'arm'})
+                self.reset_state();self.blocked.clear();self.rate={};self.strikes={};ev=self.command({'action':'arm'})
                 results.append({'scenario':'authorized','expected':'ALLOW','actual':ev['decision'],'passed':ev['decision']=='ALLOW'})
             finally:
-                self.robot=saved;self.robot['v']=self.robot['w']=0;self.blocked=blocked;self.enforce=enforce
+                self.robot=saved;self.robot['v']=self.robot['w']=0;self.blocked=blocked;self.enforce=enforce;self.rate,self.strikes=counters
             self.event('test-suite','INFO',f"Test completati: {sum(r['passed'] for r in results)}/{len(results)}")
             return results
+if __name__=='__main__':
+    import sys
+    n,err=verify_log(sys.argv[1] if len(sys.argv)>1 else ROOT/'data/events.jsonl')
+    print(f'audit chain broken at line {n}: {err}' if err else f'audit chain OK: {n} events');sys.exit(1 if err else 0)

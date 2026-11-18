@@ -16,12 +16,16 @@ configuration, one entry per rule under `rules` in `policy.json` (built-in defau
 | G1D-101 `unauthorized` | `guest_actions`, `privileged_actions`, `privileged_principal` |
 | G1D-104 `escalation` | — (role must equal principal) |
 | G1D-103 `scope` | `targets`, `actions` |
-| G1D-105 `replay` | `max_age_s`, `window_s` |
+| G1D-105 `replay` | `max_age_s`, `motion_max_age_s`, `window_s` |
 | G1D-102 `parameters` | `move` (`v_max`, `w_max`, `duration_max`), `height_max`, `trajectory` (`max_points`, `max_speed`, `max_dt`, `joint_keys`); joint limits from the URDF |
 | G1D-107 `sequence` | `motion_actions`, `estop_allowed` |
 | G1D-109 `geofence` | `box`, `keepout` |
+| G1D-110 `rate` | `max_per_s`, `exempt_actions` |
+| G1D-111 `lockout` | `max_violations`, `window_s`, `counted_rules`, `exempt_principals` |
 
-Edit `policy.json`, bump `version`, restart `server.py`; every event carries `policy_version`.
+Edit `policy.json`, bump `version`, restart `server.py`; every event carries `policy_version` and
+`policy_sha256` (digest of the effective policy). `TWIN_POLICY=/path/lab-policy.json` selects another
+file (e.g. the real-robot limits) without touching the sim one.
 
 ## Stage 0 — defaults the PEP assigns (never the caller's to spoof usefully)
 
@@ -47,7 +51,7 @@ never reach the SIEM as a DENY; the server returns 400.
 Key point: a `move` with `v = NaN` or `v = "5"` is a **400**, not a policy
 violation. Malformed input is rejected before it can be classified as an attack.
 
-## Stage 2 — policy violations → DENY / MONITOR (rules G1D-101..108)
+## Stage 2 — policy violations → DENY / MONITOR (rules G1D-101..111)
 
 Evaluated as a **first-match-wins** chain. The rule numbers are *not* the
 evaluation order — this table is in the order the code actually checks:
@@ -55,13 +59,16 @@ evaluation order — this table is in the order the code actually checks:
 | Order | Rule | Name | Triggers when |
 |---|---|---|---|
 | 1 | **G1D-108** | bypass | `via != 'pep'` — someone tried to reach the virtual endpoint without going through the PEP |
-| 2 | **G1D-106** | spoofing | `identity != principal` — declared identity differs from the authenticated principal |
-| 3 | **G1D-101** | unauthorized | principal is revoked (in `blocked`), or a `guest` asks for anything but `status` |
-| 4 | **G1D-104** | escalation | payload carries a `role` that differs from the principal (e.g. `role: admin` on an operator session) |
-| 5 | **G1D-103** | scope | `target != 'g1d-01'`, or the action is not one of the known actions |
-| 6 | **G1D-105** | replay | `request_id` already seen, **or** `|now − timestamp| > 30 s` (stale) |
-| 7 | **G1D-102** | parameters | action is well-formed but a value breaks a lab/URDF limit (see below) |
-| 8 | **G1D-107** | sequence | a movement action while not `armed`, **or** any non-recovery action while `estop` is latched |
+| 2 | **G1D-110** | rate | more than `max_per_s` commands in the last second from this principal (flooding / DoS); `stop`/`estop` are never limited |
+| 3 | **G1D-106** | spoofing | `identity != principal` — declared identity differs from the authenticated principal |
+| 4 | **G1D-101** | unauthorized | principal is revoked (in `blocked`), a `guest` asks for anything but `status`, or a non-defender asks for `reset`/`enforce`/`restore` |
+| 5 | **G1D-104** | escalation | payload carries a `role` that differs from the principal (e.g. `role: admin` on an operator session) |
+| 6 | **G1D-103** | scope | `target != 'g1d-01'`, or the action is not one of the known actions |
+| 7 | **G1D-105** | replay | `request_id` already seen, `|now − timestamp| > 30 s`, **or** a motion command older than 5 s |
+| 8 | **G1D-102** | parameters | action is well-formed but a value breaks a lab/URDF limit (see below) |
+| 9 | **G1D-107** | sequence | a movement action while not `armed`, **or** any non-recovery action while `estop` is latched |
+| 10 | **G1D-109** | geofence | a `move`, integrated forward, would leave the box or enter a keep-out zone |
+| ↳ | **G1D-111** | lockout | applied *after* the chain: the request's violation is a security one (bypass, rate, spoofing, unauthorized, escalation, scope, replay) and it is this principal's 5th in 60 s → the principal is revoked (quarantine) until a defender `restore`. Safety violations (parameters, sequence, geofence) never count, so a model producing bad chunks is held, not locked out. The defender is exempt. Red Team console fixtures are sandboxed and don't count, except the lockout scenario itself |
 
 Because it is first-match-wins, a command that both spoofs *and* has a bad
 parameter is logged as **spoofing (G1D-106)** — the earlier check wins. Document
@@ -140,6 +147,9 @@ ATT&CK release before using these in a report.
 | G1D-106 | spoofing | Enterprise | [T1036](https://attack.mitre.org/techniques/T1036/) Masquerading | Defense Evasion | strong — pairs with ICS [T0859](https://attack.mitre.org/techniques/T0859/) Valid Accounts if a real principal is impersonated |
 | G1D-107 | sequence | ICS | [T0831](https://attack.mitre.org/techniques/T0831/) Manipulation of Control | Impair Process Control | weak — a safe-state guardrail (arm/E-stop), not an adversary technique as such |
 | G1D-108 | bypass | Enterprise | [T1562](https://attack.mitre.org/techniques/T1562/) Impair Defenses | Defense Evasion | moderate — pairs with ICS [T0886](https://attack.mitre.org/techniques/T0886/) Remote Services for direct, un-mediated endpoint access |
+
+| G1D-110 | rate | ICS | [T0814](https://attack.mitre.org/techniques/T0814/) Denial of Service | Inhibit Response Function | strong |
+| G1D-111 | lockout | Enterprise | [T1110](https://attack.mitre.org/techniques/T1110/) Brute Force | Credential Access | moderate — repeated probing of the command interface |
 
 > **Wazuh note:** Wazuh rules support `<mitre><id>…</id></mitre>` tags, but the
 > manager's bundled MITRE database is **Enterprise** — the ICS `T0xxx` ids above
@@ -230,6 +240,22 @@ after Defense `estop`, even `{"action":"arm"}` → **DENY G1D-107** until a Defe
 ```
 → **ALLOW G1D-200**. Arm first, then a valid move within limits applies to the
 twin.
+
+### G1D-110 — rate (flooding)
+21 `status` requests from `operator` inside one second → the 21st is **DENY G1D-110**.
+An `estop` sent in the same second is still **ALLOW**: risk-reducing commands are never rate-limited.
+
+### G1D-111 — lockout (quarantine)
+Five security violations from `operator` within 60 s (e.g. five requests to `target: g1d-02`) →
+the 5th is **DENY G1D-111** and `operator` is revoked; any later command, even a valid one, is
+**DENY G1D-101** until `{"payload":{"action":"restore"},"principal":"defender"}`.
+
+## Audit integrity (evidence of intervention)
+
+Every event carries `prev_hash` and `hash` (SHA-256 over the event), so `events.jsonl` is a hash
+chain continued across restarts; editing, inserting or deleting a line breaks it. Check with
+`python3 engine.py data/events.jsonl` (exit 1 and the first broken line on failure).
+`policy_sha256` records which policy decided each event.
 
 ## Principals at a glance
 | Principal | Capability |

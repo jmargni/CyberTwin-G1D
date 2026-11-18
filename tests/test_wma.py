@@ -40,7 +40,9 @@ class PipelineTests(unittest.TestCase):
                 except (BrokenPipeError,ConnectionResetError):pass
         cls.mock=ThreadingHTTPServer(('127.0.0.1',0),WMA);threading.Thread(target=cls.mock.serve_forever,daemon=True).start()
         root=Path(__file__).resolve().parents[1]
-        env={**os.environ,'PYTHONPATH':str(root),'TWIN_URL':f'http://127.0.0.1:{cls.tp}','SIMULATOR_PORT':str(cls.sp),'SIMULATOR_URL':f'http://127.0.0.1:{cls.sp}','ADAPTER_PORT':str(cls.ap),'WMA_BASE_URL':f'http://127.0.0.1:{cls.mock.server_port}','WMA_TIMEOUT':'.5','MAX_OBSERVATION_AGE':'.2','EVIDENCE_DIR':cls.temp.name}
+        # The harness fires commands far faster than any operator: lift the flooding limit (G1D-110) for this twin only.
+        pol=Path(cls.temp.name)/'policy.json';pol.write_text(json.dumps({'version':'test','rules':{'rate':{'max_per_s':10000}}}))
+        env={**os.environ,'TWIN_POLICY':str(pol),'PYTHONPATH':str(root),'TWIN_URL':f'http://127.0.0.1:{cls.tp}','SIMULATOR_PORT':str(cls.sp),'SIMULATOR_URL':f'http://127.0.0.1:{cls.sp}','ADAPTER_PORT':str(cls.ap),'WMA_BASE_URL':f'http://127.0.0.1:{cls.mock.server_port}','WMA_TIMEOUT':'.5','MAX_OBSERVATION_AGE':'.2','EVIDENCE_DIR':cls.temp.name}
         for args in (['server.py','--port-3d',str(cls.tp),'--port-security',str(cls.security),'--data',cls.temp.name],['services/simulator/app.py'],['services/adapter/app.py']):
             log=open(Path(cls.temp.name)/(str(len(cls.logs))+'.log'),'w');cls.logs.append(log)
             cls.processes.append(subprocess.Popen([sys.executable,*args],cwd=root,env=env,stdout=log,stderr=log))

@@ -21,9 +21,9 @@ state=$(curl -s "$URL/api/state") || true
 
 # 2. external policy loaded (not the builtin default)
 pv=$(echo "$state" | jq -r '.policy_version // "null"')
-[ "$pv" = "1.2.0" ] && ok "policy.json loaded (v$pv)" || no "policy version" "got '$pv', expected 1.2.0"
+[ "$pv" = "1.3.0" ] && ok "policy.json loaded (v$pv)" || no "policy version" "got '$pv', expected 1.3.0"
 
-# 3. full guard regression suite (10/10 incl. geofence G1D-109)
+# 3. full guard regression suite (12/12 incl. geofence, flooding, lockout)
 suite=$(curl -s -XPOST "$URL/api/tests" -H 'Content-Type: application/json' -d '{}')
 read -r pass total < <(echo "$suite" | jq -r '[.[].passed] | "\(map(select(.))|length) \(length)"')
 [ "$pass" = "$total" ] && [ "$total" -ge 10 ] \
