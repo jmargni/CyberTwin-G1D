@@ -2,7 +2,7 @@ import json, socket, subprocess, sys, tempfile, time, unittest, urllib.request
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'services' / 'mcp'))
-import g1d_agent
+import g1d_agent, g1d_web
 
 def free_port():
     with socket.socket() as s: s.bind(('127.0.0.1', 0)); return s.getsockname()[1]
@@ -82,5 +82,19 @@ class AgentTests(unittest.TestCase):
         llm = ScriptedLLM(*[[tc('get_state')]] * g1d_agent.MAX_CALLS)
         self.assertIn('more than', self.agent(llm).run('loop forever'))
         self.assertIn('longer than', self.agent(ScriptedLLM()).run('x' * (g1d_agent.MAX_PROMPT + 1)))
+
+    def test_web_session_parks_the_plan_until_the_browser_decides(self):
+        # The tests share one twin: earlier denials may have locked assistant out (G1D-111); clear it as Defense would.
+        urllib.request.urlopen(urllib.request.Request(self.url + '/api/command', json.dumps(
+            {'payload': {'action': 'restore'}, 'principal': 'defender'}).encode(), {'Content-Type': 'application/json'})).close()
+        time.sleep(1.1)  # and start in a fresh G1D-110 (20 commands/s) window
+        self.mcp.call('arm', {}); self.mcp.call('gripper', {'state': 'open'})
+        llm = ScriptedLLM([tc('plan_sequence', steps=[{'action': 'gripper', 'state': 'closed'}])], lambda r: f"approved={r['approved']}")
+        s = g1d_web.Session(g1d_agent.Agent(self.mcp, llm, None))
+        r = s.start('close the grippers'); self.assertEqual(r['status'], 'plan'); self.assertEqual(self.robot()['gripper'], 'open')
+        with self.assertRaises(ValueError): s.start('again')  # one prompt at a time
+        r = s.decide(True); self.assertEqual((r['status'], r['reply']), ('done', 'approved=True'))
+        self.assertTrue(any('⇒' in l for l in r['log'])); self.assertEqual(self.robot()['gripper'], 'closed')
+        with self.assertRaises(ValueError): s.decide(True)  # nothing waiting
 
 if __name__ == '__main__': unittest.main()

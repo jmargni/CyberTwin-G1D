@@ -76,6 +76,19 @@ python3 services/mcp/g1d_agent.py                               # prompt> wave t
 python3 services/mcp/g1d_agent.py --once "arma il robot"
 ```
 
+### Web page
+
+`services/mcp/g1d_web.py` serves the same agent as a page on **:3002**. The chat is on the right and the live 3D
+robot workspace is on the left; the workspace is the console's own `scene.js` and model, fed by the twin's `/api/state`.
+A plan shows up as a card with **Esegui / Annulla**, and nothing moves until you click. **STOP** and **E-STOP**
+(the buttons, or a stop/emergency prompt) use a second MCP connection, so they act at once even while the LLM is
+thinking or a plan is running. The twin is unchanged.
+
+```
+python3 server.py                      # or bash scripts/demo_command.sh for the full loop 2
+python3 services/mcp/g1d_web.py        # http://127.0.0.1:3002  (--twin_url, --llm_url, --port)
+```
+
 Client-side guardrails (the PEP stays the final check):
 
 - A prompt that is just `stop`, `halt`, `ferma` or `alt` goes to the stop tool; any prompt containing `estop`,
@@ -97,5 +110,4 @@ python3 scripts/agent_eval.py --llm_url http://127.0.0.1:8081/v1 --out data/eval
 
 Candidates for a CPU (quantized Q4_K_M): Qwen3 4B Instruct (~2.5 GB), Qwen3 8B (~5 GB), Phi-4-mini (~2.5 GB).
 
-Not in yet: loop-1 `set_task`, a control token so only one source drives motion at a time, a Prompt panel
-on the :3000 page. The conversation history is not trimmed (fine for a demo session; trim for long runs).
+Not in yet: loop-1 `set_task`, a control token so only one source drives motion at a time. The conversation history is not trimmed (fine for a demo session; trim for long runs).

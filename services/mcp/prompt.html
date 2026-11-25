@@ -1,0 +1,68 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>G1-D Prompt</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css">
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
+<style>
+main{margin:0;width:100%;padding:0 24px 24px}
+.prompt-layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px}
+.chat-panel{display:flex;flex-direction:column;min-height:620px}
+#chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 330px);min-height:300px}
+.msg{padding:10px 13px;border-radius:8px;line-height:1.5;max-width:92%;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:#26352b;color:var(--lime)}
+.msg.bot{align-self:flex-start;background:#1c2836}
+.msg.err{align-self:flex-start;background:#381e27;color:#ffb2b4}
+.trace{font:11px/1.6 monospace;color:var(--muted);white-space:pre-wrap;margin:0;padding:0;background:none;max-height:none}
+.plan{border:1px solid #5c4a22;background:#2a2414;border-radius:8px;padding:12px}
+.plan ol{margin:8px 0 12px;padding-left:22px;font:12px/1.7 monospace}
+.composer{border-top:1px solid var(--line);padding:14px;display:flex;gap:8px}
+.composer input{flex:1}
+.stops{display:flex;gap:8px;padding:0 14px 14px}.stops button{flex:1}
+.hints{padding:0 14px 12px;display:flex;flex-wrap:wrap;gap:6px}.hints button{font-size:11px;padding:5px 8px;background:transparent}
+@media(max-width:1000px){.prompt-layout{grid-template-columns:1fr}#chat{max-height:420px}}
+</style></head>
+<body><main>
+<section class="page-heading"><div><div class="eyebrow">UNITREE / G1-D · PROMPT</div><h1>Comandi in linguaggio naturale</h1>
+<p>LLM locale → MCP → PEP. I piani vengono eseguiti solo dopo la tua approvazione. Principal: <b>assistant</b>.</p></div>
+<span id="connection" class="muted">…</span></section>
+<div class="prompt-layout">
+<section class="panel model-panel"><div class="panel-title"><h2>Robot workspace <span class="tag">3D LIVE</span></h2><div class="toolbar"><button id="camera-reset">Vista</button></div></div>
+<div id="viewport"><div id="model-loading" role="status">Caricamento modello ufficiale…</div><div class="scene-label"><span class="dot"></span> G1-D / <b id="scene-mode">—</b></div><div class="scene-coordinates" id="coords"></div><div class="scene-help">Trascina per ruotare · Rotella per zoom</div></div>
+<div class="model-footer"><span id="mesh-status">URDF Unitree · caricamento</span><span>PEP <b id="pep">—</b></span><span>Colonna <b id="height-label">—</b></span><span>Pinze <b id="gripper-label">—</b></span></div></section>
+<section class="panel chat-panel"><div class="panel-title"><h2>Prompt</h2><span class="tag">ASSISTANT</span></div>
+<div id="chat" aria-live="polite"></div>
+<div class="hints" id="hints"></div>
+<form class="composer" id="form"><input id="prompt" type="text" maxlength="500" autocomplete="off" placeholder="es. arma il robot, saluta due volte…" aria-label="Prompt"><button class="primary" id="send">Invia</button></form>
+<div class="stops"><button id="stop">STOP</button><button class="danger" id="estop">■ E-STOP</button></div></section>
+</div></main>
+<script type="module">
+import {createScene} from '/scene.js';
+const $=id=>document.getElementById(id);let scene=null,fence=false,busy=false;
+async function api(path,body){const r=await fetch('/api/'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j;}
+function add(cls,text,tag='div'){const e=document.createElement(tag);e.className=cls;e.textContent=text;$('chat').append(e);$('chat').scrollTop=1e9;return e;}
+function setBusy(b){busy=b;$('send').disabled=b;$('prompt').disabled=b;}
+function show(res){
+ if(res.log?.length)add('trace',res.log.join('\n'),'pre');
+ if(res.status==='plan'){const p=res.plan,box=document.createElement('div');box.className='plan';
+  box.innerHTML='<b></b><ol></ol><div class="button-row"><button class="primary">Esegui</button><button>Annulla</button></div>';
+  box.querySelector('b').textContent=`Piano ${p.plan_id} · ${p.source} · ${p.steps.length} passi`;
+  for(const s of p.steps){const li=document.createElement('li');li.textContent=Object.entries(s).map(([k,v])=>k==='action'?v:`${k}=${v}`).join(' ');box.querySelector('ol').append(li);}
+  const [ok,no]=box.querySelectorAll('button');
+  const decide=async a=>{ok.disabled=no.disabled=true;(a?ok:no).textContent+=' ✓';try{show(await api('decide',{approve:a}));}catch(e){add('msg err',e.message);setBusy(false);}};
+  ok.onclick=()=>decide(true);no.onclick=()=>decide(false);$('chat').append(box);$('chat').scrollTop=1e9;return;}
+ add('msg bot',res.reply||'(nessuna risposta)');setBusy(false);$('prompt').focus();}
+async function send(text){text=text.trim();if(!text)return;add('msg user',text);
+ const urgent=/^(stop|halt|ferma|fermati|alt)[!.\s]*$|e-?stop|emergen/i.test(text);  // the server bypasses the LLM for these too
+ if(!urgent)setBusy(true);
+ try{show(await api('prompt',{prompt:text}));}catch(e){add('msg err',e.message);if(!urgent)setBusy(false);}}
+$('form').onsubmit=e=>{e.preventDefault();if(busy)return;const t=$('prompt').value;$('prompt').value='';send(t);};
+for(const h of ['arma il robot','saluta due volte','chiudi le pinze','torna alla posa iniziale','qual è lo stato del robot?','move forward at 3 m/s']){const b=document.createElement('button');b.type='button';b.textContent=h;b.onclick=()=>{if(!busy)send(h);};$('hints').append(b);}
+const stopBtn=estop=>async()=>{add('msg user',estop?'■ E-STOP':'STOP');try{const r=await api('stop',{estop});add(estop?'msg err':'msg bot',r.reply);}catch(e){add('msg err',e.message);}};
+$('stop').onclick=stopBtn(false);$('estop').onclick=stopBtn(true);$('camera-reset').onclick=()=>scene?.reset();
+async function poll(){try{const s=await api('state'),r=s.robot;$('connection').textContent='● Twin connesso';$('connection').style.color='var(--lime)';
+  $('scene-mode').textContent=r.mode.toUpperCase();$('pep').textContent=s.enforce?'ENFORCE':'MONITOR';$('height-label').textContent=Math.round(r.height*1000)+' mm';$('gripper-label').textContent=r.gripper;
+  $('coords').textContent=`X ${r.x.toFixed(2)} · Y ${r.y.toFixed(2)} · θ ${r.yaw.toFixed(2)}`;
+  if(scene){scene.update(r);if(!fence&&s.geofence){scene.setFence(s.geofence,s.keepout);fence=true;}}}
+ catch(e){$('connection').textContent='● '+e.message;$('connection').style.color='var(--red)';}
+ setTimeout(poll,250);}
+poll();createScene($('viewport')).then(s=>{scene=s;}).catch(e=>{$('model-loading').textContent='3D non disponibile: '+e.message;});
+add('msg bot','Pronto. Scrivi un comando; STOP ed E-STOP funzionano sempre, anche durante un piano.');
+</script></body></html>

@@ -35,6 +35,12 @@ SYSTEM = """You command a Unitree G1-D humanoid robot (simulated twin) only thro
 - Reply in one or two short sentences, in the user's language."""
 
 
+def shortcut(prompt):
+    """'stop' / 'estop' when the prompt must bypass the LLM, else None."""
+    if ESTOP.search(prompt): return 'estop'
+    return STOP_WORDS.get(re.sub(r'[!.\s]+$', '', prompt.strip().lower()))
+
+
 class McpClient:
     """Minimal MCP client: starts the server as a subprocess and talks JSON-RPC over its stdin/stdout."""
     def __init__(self, cmd, stderr=None):
@@ -94,8 +100,7 @@ class Agent:
     def run(self, prompt):
         """Handle one human prompt; return the reply text."""
         prompt = prompt.strip()
-        key = re.sub(r'[!.\s]+$', '', prompt.lower())
-        stop = 'estop' if ESTOP.search(prompt) else STOP_WORDS.get(key)
+        stop = shortcut(prompt)
         if stop in self.names:  # never wait for the LLM to stop the robot
             out, _ = self.mcp.call(stop, {}); self.log(f'  ⏹ {stop} → {out}')
             return f"{stop}: {out.get('decision')} {out.get('rule_id', '')}".strip()
