@@ -14,13 +14,14 @@ Guardrails in this client (the PEP stays the final check):
   estop, without the LLM: the LLM is never on the stop path.
 - the LLM never sees execute_plan: when it plans, this client shows the steps, asks the human and, only on
   yes, executes the plan itself. The LLM gets the outcome as the plan tool's result.
-- prompts longer than MAX_PROMPT are refused; at most MAX_CALLS tool calls per prompt.
+- prompts longer than MAX_PROMPT are refused; at most MAX_CALLS tool calls per prompt, MAX_TOKENS per LLM reply,
+  and the history keeps about MAX_HISTORY messages (oldest whole turns dropped).
 """
 import argparse, json, re, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-MAX_PROMPT, MAX_CALLS = 500, 8
+MAX_PROMPT, MAX_CALLS, MAX_TOKENS, MAX_HISTORY = 500, 8, 512, 40
 STOP_WORDS = {'stop': 'stop', 'halt': 'stop', 'ferma': 'stop', 'fermati': 'stop', 'alt': 'stop'}  # whole prompt
 # Anywhere in the prompt: a false trigger only stops the robot, a missed one is the failure that matters.
 ESTOP = re.compile(r'\b(e-?stop|emergency|emergenza|arresto di emergenza)\b', re.I)
@@ -80,6 +81,7 @@ def llm_chat(url, model='local', timeout=180):
     """chat(messages, tools) -> assistant message, against an OpenAI-style server (llama-server, Ollama, ...)."""
     def chat(messages, tools):
         body = {'model': model, 'messages': messages, 'tools': tools, 'tool_choice': 'auto', 'temperature': 0,
+                'max_tokens': MAX_TOKENS,  # a looping model must not hold the robot's prompt for minutes
                 'chat_template_kwargs': {'enable_thinking': False}}  # Qwen3 hybrids: answer, don't think aloud
         req = urllib.request.Request(url.rstrip('/') + '/chat/completions', json.dumps(body).encode(),
                                      {'Content-Type': 'application/json'})
@@ -105,6 +107,10 @@ class Agent:
             out, _ = self.mcp.call(stop, {}); self.log(f'  ⏹ {stop} → {out}')
             return f"{stop}: {out.get('decision')} {out.get('rule_id', '')}".strip()
         if len(prompt) > MAX_PROMPT: return f'Prompt refused: longer than {MAX_PROMPT} characters.'
+        while len(self.messages) > MAX_HISTORY:  # drop the oldest whole turns (a user message and its replies)
+            nxt = next((k for k in range(2, len(self.messages)) if self.messages[k]['role'] == 'user'), None)
+            if nxt is None: break
+            del self.messages[1:nxt]
         self.messages.append({'role': 'user', 'content': prompt})
         for _ in range(MAX_CALLS):
             msg = self.chat(self.messages, self.tools)

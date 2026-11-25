@@ -5,7 +5,8 @@
 #
 #   bash scripts/demo_command.sh
 #   then: arm the robot, wait for "console commands now reach the robot", send from http://localhost:3000/#commands
+#   or type prompts at http://localhost:3002 (local LLM via MCP, plans need your approval)
 #   tmux kill-session -t g1d-demo      # tear down
 #
-# Same as `bash scripts/demo_up.sh command`; TWIN, SCRIPTS and BIND env overrides still apply.
+# Same as `bash scripts/demo_up.sh command`; TWIN, SCRIPTS, BIND and PROMPT (0 = no LLM/prompt page) env overrides apply.
 exec bash "$(dirname "$0")/demo_up.sh" command

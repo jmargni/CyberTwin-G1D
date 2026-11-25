@@ -1,5 +1,7 @@
 # Prompt control via MCP
 
+Overview of the whole loop, its security layers and the demo commands: [MCP-LOOP.md](MCP-LOOP.md).
+
 `services/mcp/g1d_mcp.py` is an MCP server (stdio, JSON-RPC 2.0, Python standard library only) that lets an
 LLM command the G1-D through the PEP. It is the only part that talks to the loop: every motion tool is a
 `POST /api/command` as principal `assistant`, so it gets the same checks as the Comandi page (and, in loop 2,
@@ -96,7 +98,7 @@ Client-side guardrails (the PEP stays the final check):
 - The LLM never calls `execute_plan`. When it calls `plan_skill` or `plan_sequence`, the client shows the
   steps, asks the human and, only on `y`, executes the plan itself; the LLM gets the outcome as the plan
   tool's result. (Small models do not reliably make the second call, and the human gate belongs in code.)
-- Prompts over 500 characters are refused; at most 8 tool calls per prompt.
+- Prompts over 500 characters are refused; at most 8 tool calls per prompt and 512 tokens per LLM reply.
 
 ## Choosing the model
 
@@ -110,4 +112,4 @@ python3 scripts/agent_eval.py --llm_url http://127.0.0.1:8081/v1 --out data/eval
 
 Candidates for a CPU (quantized Q4_K_M): Qwen3 4B Instruct (~2.5 GB), Qwen3 8B (~5 GB), Phi-4-mini (~2.5 GB).
 
-Not in yet: loop-1 `set_task`, a control token so only one source drives motion at a time. The conversation history is not trimmed (fine for a demo session; trim for long runs).
+Not in yet: loop-1 `set_task`, a control token so only one source drives motion at a time. The history keeps the last ~40 messages (whole turns) and each LLM reply is capped at 512 tokens.

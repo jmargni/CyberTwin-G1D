@@ -29,7 +29,10 @@ class Session:
 
     def start(self, prompt):
         with self.cv:
-            if self.busy: raise ValueError('busy: the previous prompt is still running')
+            if self.plan:  # a new prompt (or a reloaded page) abandons the pending plan: rejected, nothing moves
+                self.plan, self.decision = None, False; self.cv.notify_all()
+                self.cv.wait_for(lambda: self.reply is not None, 60)
+            if self.busy and self.reply is None: raise ValueError('busy: the previous prompt is still running')
             self.busy, self.reply, self.log[:], self.sent = True, None, [], 0
         def run():
             try: reply = self.agent.run(prompt)

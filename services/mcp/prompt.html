@@ -4,8 +4,10 @@
 <style>
 main{margin:0;width:100%;padding:0 24px 24px}
 .prompt-layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px}
-.chat-panel{display:flex;flex-direction:column;min-height:620px}
-#chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 330px);min-height:300px}
+.chat-panel{display:flex;flex-direction:column}
+.chat-panel .stops{position:sticky;bottom:0;background:var(--panel);padding-top:4px}
+#chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 480px);min-height:220px}
+#chat>*{flex-shrink:0}  /* overflow:auto traces would otherwise collapse to 0 height once the chat is full */
 .msg{padding:10px 13px;border-radius:8px;line-height:1.5;max-width:92%;overflow-wrap:anywhere}
 .msg.user{align-self:flex-end;background:#26352b;color:var(--lime)}
 .msg.bot{align-self:flex-start;background:#1c2836}

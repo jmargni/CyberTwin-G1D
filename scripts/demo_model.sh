@@ -5,5 +5,5 @@
 #   bash scripts/demo_model.sh
 #   tmux kill-session -t g1d-demo      # tear down
 #
-# Same as `bash scripts/demo_up.sh` (packing mode); TWIN, SCRIPTS and BIND env overrides still apply.
+# Same as `bash scripts/demo_up.sh` (packing mode); TWIN, SCRIPTS, BIND and PROMPT (0 = no LLM/prompt page) env overrides apply.
 exec bash "$(dirname "$0")/demo_up.sh" packing
