@@ -31,7 +31,7 @@ CASES = [
     ('Raise the column to 30 cm', {'height': a(value=near(0.3))}),
     ('Bend the right elbow to 1 radian', {'joint': a(name='right_elbow_joint', value=near(1.0))}),
     ('Porta il gomito sinistro a 0.5 radianti', {'joint': a(name='left_elbow_joint', value=near(0.5))}),
-    ('Go back to the start pose', {'home': None}),
+    ('Go back to the start pose', {'home': None, 'plan_skill': a(name='ready_pose')}),  # ready_pose = arm + home
     ('Wave three times', {'plan_skill': a(name='wave', params=lambda p: (p or {}).get('times') == 3)}),
     ('Saluta due volte', {'plan_skill': a(name='wave', params=lambda p: (p or {}).get('times') == 2)}),
     ('Get the robot ready', {'plan_skill': a(name='ready_pose')}),

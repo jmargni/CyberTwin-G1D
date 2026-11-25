@@ -10,8 +10,10 @@
   python3 services/mcp/g1d_agent.py --once "wave twice"     # one prompt
 
 Guardrails in this client (the PEP stays the final check):
-- "stop" / "estop" prompts go straight to the stop/estop tool; the LLM is never on the stop path.
-- execute_plan runs only for a plan this session received, after the human approves its steps.
+- a prompt that is just "stop" goes to the stop tool, and any prompt mentioning an emergency/E-stop goes to
+  estop, without the LLM: the LLM is never on the stop path.
+- the LLM never sees execute_plan: when it plans, this client shows the steps, asks the human and, only on
+  yes, executes the plan itself. The LLM gets the outcome as the plan tool's result.
 - prompts longer than MAX_PROMPT are refused; at most MAX_CALLS tool calls per prompt.
 """
 import argparse, json, re, subprocess, sys, time, urllib.request
@@ -19,12 +21,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 MAX_PROMPT, MAX_CALLS = 500, 8
-STOP_WORDS = {'stop': 'stop', 'halt': 'stop', 'ferma': 'stop', 'fermati': 'stop', 'alt': 'stop',
-              'estop': 'estop', 'e-stop': 'estop', 'emergency stop': 'estop', 'emergenza': 'estop'}
+STOP_WORDS = {'stop': 'stop', 'halt': 'stop', 'ferma': 'stop', 'fermati': 'stop', 'alt': 'stop'}  # whole prompt
+# Anywhere in the prompt: a false trigger only stops the robot, a missed one is the failure that matters.
+ESTOP = re.compile(r'\b(e-?stop|emergency|emergenza|arresto di emergenza)\b', re.I)
 SYSTEM = """You command a Unitree G1-D humanoid robot (simulated twin) only through the tools.
 - One action: call its tool.
-- A named action (ready, wave, grasp, park) or several steps: call plan_skill or plan_sequence. Then call
-  execute_plan with the returned plan_id; the human confirms it first.
+- A named action (ready, wave, grasp, park) or several steps: call plan_skill or plan_sequence. The human
+  approves the plan and it runs; the tool result tells you whether it was approved and what happened.
 - Arm joints are in radians, base speed in m/s, column height in metres. Use the limits in the tool descriptions.
 - If a tool result says DENY, report the rule id and message and stop. Never retry it in another form.
 - If no tool can do what is asked (for example disabling the guardrail, resetting an E-stop, acting as
@@ -83,18 +86,19 @@ def llm_chat(url, model='local', timeout=180):
 class Agent:
     def __init__(self, mcp, chat, confirm, log=print):
         self.mcp, self.chat, self.confirm, self.log = mcp, chat, confirm, log
-        self.tools = openai_tools(mcp.tools)
-        self.names = {t['name'] for t in mcp.tools}
-        self.plans = {}  # plan_id -> plan received in this session
+        visible = [t for t in mcp.tools if t['name'] != 'execute_plan']  # plans run only via the human, below
+        self.tools = openai_tools(visible)
+        self.names = {t['name'] for t in visible}
         self.messages = [{'role': 'system', 'content': SYSTEM + '\n' + mcp.instructions}]
 
     def run(self, prompt):
         """Handle one human prompt; return the reply text."""
         prompt = prompt.strip()
         key = re.sub(r'[!.\s]+$', '', prompt.lower())
-        if key in STOP_WORDS and STOP_WORDS[key] in self.names:  # never wait for the LLM to stop the robot
-            out, _ = self.mcp.call(STOP_WORDS[key], {}); self.log(f'  ⏹ {STOP_WORDS[key]} → {out}')
-            return f"{STOP_WORDS[key]}: {out.get('decision')} {out.get('rule_id', '')}".strip()
+        stop = 'estop' if ESTOP.search(prompt) else STOP_WORDS.get(key)
+        if stop in self.names:  # never wait for the LLM to stop the robot
+            out, _ = self.mcp.call(stop, {}); self.log(f'  ⏹ {stop} → {out}')
+            return f"{stop}: {out.get('decision')} {out.get('rule_id', '')}".strip()
         if len(prompt) > MAX_PROMPT: return f'Prompt refused: longer than {MAX_PROMPT} characters.'
         self.messages.append({'role': 'user', 'content': prompt})
         for _ in range(MAX_CALLS):
@@ -113,16 +117,15 @@ class Agent:
         except json.JSONDecodeError: return {'error': 'arguments are not valid JSON'}
         if name not in self.names: return {'error': f'no tool named {name}'}
         if not isinstance(args, dict): return {'error': 'arguments must be an object'}
-        if name == 'execute_plan':
-            plan = self.plans.pop(args.get('plan_id'), None)
-            if not plan: return {'error': 'unknown plan_id: plan first'}
-            if not self.confirm(plan):
-                self.log('  ✗ plan rejected by the human'); return {'error': 'the human rejected the plan; nothing moved'}
         self.log(f'  → {name} {json.dumps(args, ensure_ascii=False)}')
         out, err = self.mcp.call(name, args)
         self.log(f"  ← {'ERROR ' if err else ''}{json.dumps(out, ensure_ascii=False)[:300]}")
-        if name.startswith('plan_') and not err: self.plans[out['plan_id']] = out
-        return out
+        if not name.startswith('plan_') or err: return out
+        if not self.confirm(out):
+            self.log('  ✗ plan rejected by the human'); return {'approved': False, 'note': 'the human rejected the plan; nothing moved'}
+        res, err = self.mcp.call('execute_plan', {'plan_id': out['plan_id']})
+        self.log(f"  ⇒ {'ERROR ' if err else ''}{json.dumps(res, ensure_ascii=False)[:300]}")
+        return {'approved': True, 'result': res}
 
 
 def ask_human(plan):

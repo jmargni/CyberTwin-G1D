@@ -48,19 +48,21 @@ class AgentTests(unittest.TestCase):
             with self.subTest(approve=approve):
                 self.mcp.call('arm', {}); self.mcp.call('gripper', {'state': 'open'})
                 llm = ScriptedLLM([tc('plan_sequence', steps=[{'action': 'gripper', 'state': 'closed'}])],
-                                  lambda r: [tc('execute_plan', plan_id=r['plan_id'])], 'done')
-                self.agent(llm, approve).run('close the grippers')
+                                  lambda r: f"approved={r['approved']}")
+                self.assertEqual(self.agent(llm, approve).run('close the grippers'), f'approved={approve}')
                 self.assertEqual(len(self.asked), 1); self.asked.clear()
                 self.assertEqual(self.robot()['gripper'], 'closed' if approve else 'open')
 
-    def test_invented_plan_id_is_refused_without_asking(self):
-        llm = ScriptedLLM([tc('execute_plan', plan_id='abc123')], lambda r: r['error'])
-        self.assertIn('unknown plan_id', self.agent(llm).run('do it')); self.assertEqual(self.asked, [])
+    def test_llm_cannot_execute_a_plan_itself(self):
+        ag = self.agent(ScriptedLLM([tc('execute_plan', plan_id='abc123')], lambda r: r['error']))
+        self.assertNotIn('execute_plan', ag.names)
+        self.assertIn('no tool named execute_plan', ag.run('do it')); self.assertEqual(self.asked, [])
 
     def test_stop_words_bypass_the_llm(self):
         llm = ScriptedLLM()  # any LLM call would fail: no steps
         self.mcp.call('arm', {}); self.assertTrue(self.agent(llm).run('Stop!').startswith('stop: ALLOW'))
         self.assertTrue(self.agent(llm).run('e-stop').startswith('estop: ALLOW')); self.assertEqual(self.robot()['mode'], 'estop')
+        self.assertTrue(self.agent(llm).run('Emergency stop now, there is a person in the cell!').startswith('estop: ALLOW'))
         self.assertEqual(llm.calls, 0)
         urllib.request.urlopen(urllib.request.Request(self.url + '/api/command', json.dumps(
             {'payload': {'action': 'reset'}, 'principal': 'defender'}).encode(), {'Content-Type': 'application/json'})).close()  # defender clears it

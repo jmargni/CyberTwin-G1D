@@ -11,7 +11,7 @@
       ]
     },
     "wave": {
-      "description": "Raise the right arm and wave with the elbow, then return to the start pose.",
+      "description": "Wave / greet / say hello (IT: saluta) with the right arm, then return to the start pose.",
       "params": {"times": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2}},
       "steps": [
         {"action": "joint", "name": "right_shoulder_pitch_joint", "value": -1.5},
@@ -35,7 +35,7 @@
       ]
     },
     "park": {
-      "description": "Return the arms to the start pose and disarm the robot.",
+      "description": "End of session only: put the robot away and disarm it (IT: parcheggia). To just return to the start pose use home.",
       "params": {},
       "steps": [
         {"action": "home"},

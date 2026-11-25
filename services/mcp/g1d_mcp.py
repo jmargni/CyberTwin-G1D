@@ -92,8 +92,8 @@ class G1DServer:
         doc = {
             'arm': 'Arm the robot. Motion commands are refused until it is armed.',
             'disarm': 'Disarm the robot and stop the base.', 'stop': 'Stop the base (v=w=0).',
-            'estop': 'Emergency stop (latched). Only the Defense console can reset it.',
-            'home': 'Arms back to the start pose, grippers open, column down.',
+            'estop': 'Emergency stop: halt all motion now. Use it whenever a person or the robot is in danger. It latches until the Defense console resets it.',
+            'home': 'Go back to the start pose: arms, grippers open, column down. The robot stays armed.',
             'move': f"Drive the base: v m/s (|v|<={mv['v_max']}), w rad/s (|w|<={mv['w_max']}), duration s (<= {mv['duration_max']}).",
             'height': f'Set the column height in m (0..{hmax}).',
             'joint': 'Set one arm joint angle in rad (URDF limits apply). Use small steps.',

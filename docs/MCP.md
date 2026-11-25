@@ -78,9 +78,11 @@ python3 services/mcp/g1d_agent.py --once "arma il robot"
 
 Client-side guardrails (the PEP stays the final check):
 
-- `stop`, `halt`, `ferma`, `estop`, `e-stop`, `emergenza` go straight to the stop/estop tool, without the LLM.
-- `execute_plan` runs only for a plan received in this session, after the steps are shown and the human
-  answers `y`. A plan the human rejects is dropped.
+- A prompt that is just `stop`, `halt`, `ferma` or `alt` goes to the stop tool; any prompt containing `estop`,
+  `e-stop`, `emergency` or `emergenza` goes to estop. The LLM is not involved, and a false trigger only stops the robot.
+- The LLM never calls `execute_plan`. When it calls `plan_skill` or `plan_sequence`, the client shows the
+  steps, asks the human and, only on `y`, executes the plan itself; the LLM gets the outcome as the plan
+  tool's result. (Small models do not reliably make the second call, and the human gate belongs in code.)
 - Prompts over 500 characters are refused; at most 8 tool calls per prompt.
 
 ## Choosing the model
