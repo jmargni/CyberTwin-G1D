@@ -66,4 +66,5 @@ $('event-search').oninput=renderEvents;$('event-filter').onchange=renderEvents;
 try{config=await api('config');$('port').textContent=':'+location.port;const other=config.console==='security'?'twin':'security';const url=new URL(location.href);url.port=config.ports[other];url.hash=other==='twin'?'twin':'red';$('other-console').href=url.href;$('other-console').textContent=other==='twin'?'Console 3D :3000 ↗':'Console sicurezza :4000 ↗';await refresh();navigate(location.hash.slice(1)||(config.console==='security'?'red':'twin'));}catch(e){toast('Avvio fallito: '+e.message);}
 setInterval(refresh,700);
 
+{const u=new URL(location.href);u.port=3002;u.pathname='/';u.hash='';u.search='';document.getElementById('prompt-link').href=u.href;}  // g1d_web.py
 for(const [id,port] of [['camera-head-link',60001],['camera-left-link',60002],['camera-right-link',60003]]){const u=new URL(location.href);u.protocol='https:';u.port=port;u.pathname='/';u.hash='';u.search='';document.getElementById(id).href=u.href;}
