@@ -1,0 +1,47 @@
+{
+  "version": "1.0.0",
+  "skills": {
+    "ready_pose": {
+      "description": "Arm the robot, bring the arms to the start pose and open the grippers.",
+      "params": {},
+      "steps": [
+        {"action": "arm"},
+        {"action": "home"},
+        {"action": "wait", "seconds": 2}
+      ]
+    },
+    "wave": {
+      "description": "Raise the right arm and wave with the elbow, then return to the start pose.",
+      "params": {"times": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2}},
+      "steps": [
+        {"action": "joint", "name": "right_shoulder_pitch_joint", "value": -1.5},
+        {"action": "wait", "seconds": 1.5},
+        {"repeat": "$times", "steps": [
+          {"action": "joint", "name": "right_elbow_joint", "value": 1.4},
+          {"action": "wait", "seconds": 1},
+          {"action": "joint", "name": "right_elbow_joint", "value": 0.3},
+          {"action": "wait", "seconds": 1}
+        ]},
+        {"action": "home"}
+      ]
+    },
+    "grasp": {
+      "description": "Close then open the grippers, holding them closed for the given seconds.",
+      "params": {"hold_s": {"type": "number", "minimum": 0.5, "maximum": 10, "default": 2}},
+      "steps": [
+        {"action": "gripper", "state": "closed"},
+        {"action": "wait", "seconds": "$hold_s"},
+        {"action": "gripper", "state": "open"}
+      ]
+    },
+    "park": {
+      "description": "Return the arms to the start pose and disarm the robot.",
+      "params": {},
+      "steps": [
+        {"action": "home"},
+        {"action": "wait", "seconds": 2},
+        {"action": "disarm"}
+      ]
+    }
+  }
+}

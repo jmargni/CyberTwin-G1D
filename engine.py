@@ -39,7 +39,7 @@ PRIVILEGED=('reset','enforce','restore')
 # One entry per rule: its id and parameters. The rule logic and the evaluation order live in Twin.command().
 # Trajectory limits are lab limits, not Unitree specs (the G1 "pack camera" training data peaks near 2.3 rad/s).
 # Geofence is base motion only: workspace box in metres from origin, plus named keep-out zones (zone interdette).
-DEFAULT_POLICY={'version':'builtin','principals':['operator','guest','defender'],'rules':{
+DEFAULT_POLICY={'version':'builtin','principals':['operator','guest','defender','assistant'],'rules':{
  'bypass':{'id':'G1D-108','required_via':'pep'},
  'spoofing':{'id':'G1D-106'},
  'unauthorized':{'id':'G1D-101','guest_actions':['status'],'privileged_actions':list(PRIVILEGED),'privileged_principal':'defender'},

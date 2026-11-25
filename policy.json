@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "principals": ["operator", "guest", "defender"],
+  "version": "1.4.0",
+  "principals": ["operator", "guest", "defender", "assistant"],
   "rules": {
     "bypass": {
       "id": "G1D-108",

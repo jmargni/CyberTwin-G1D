@@ -21,7 +21,7 @@ state=$(curl -s "$URL/api/state") || true
 
 # 2. external policy loaded (not the builtin default)
 pv=$(echo "$state" | jq -r '.policy_version // "null"')
-[ "$pv" = "1.3.0" ] && ok "policy.json loaded (v$pv)" || no "policy version" "got '$pv', expected 1.3.0"
+[ "$pv" = "1.4.0" ] && ok "policy.json loaded (v$pv)" || no "policy version" "got '$pv', expected 1.4.0"
 
 # 3. full guard regression suite (12/12 incl. geofence, flooding, lockout)
 suite=$(curl -s -XPOST "$URL/api/tests" -H 'Content-Type: application/json' -d '{}')

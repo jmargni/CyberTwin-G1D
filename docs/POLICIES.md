@@ -32,7 +32,7 @@ file (e.g. the real-robot limits) without touching the sim one.
 Before any check, the PEP deep-copies the payload and fills missing fields:
 `request_id` (uuid), `timestamp` (now), `identity` (= principal), `target`
 (`g1d-01`), `via` (`pep`). The **principal** is passed separately by the server
-(`operator`, `guest`, or `defender`) — the payload cannot choose it.
+(`operator`, `guest`, `defender` or `assistant`) — the payload cannot choose it.
 
 ## Stage 1 — structural validation → `ValueError` (HTTP 400, *not* a policy denial)
 
@@ -43,7 +43,7 @@ never reach the SIEM as a DENY; the server returns 400.
 |---|---|
 | payload is a JSON object | — |
 | `action` is a string, `params` is an object | — |
-| principal ∈ {operator, guest, defender} | — |
+| principal ∈ {operator, guest, defender, assistant} | — |
 | `request_id` is a string of 1..128 chars | — |
 | `timestamp` is a finite number (no bool/NaN/Inf) | — |
 | every numeric param (`v`, `w`, `duration`, `value`) is a finite number | — |
@@ -262,6 +262,7 @@ chain continued across restarts; editing, inserting or deleting a line breaks it
 |---|---|
 | `operator` | full command set (subject to all policy above) |
 | `guest` | `status` only — anything else is G1D-101 |
+| `assistant` | the MCP server (prompt control, [MCP.md](MCP.md)): same rights as `operator`, but its own rate and lockout counters, so a misbehaving LLM is quarantined without locking out the human operator. The MCP server exposes only arm joints, base, column, gripper, arm/disarm/stop/estop |
 | `defender` | the only principal allowed `reset`, `enforce` and `restore` (PEP commands, G1D-101 otherwise); estop/revoke via `Twin.defense()` are open to the consoles |
 
 ## Where decisions go
