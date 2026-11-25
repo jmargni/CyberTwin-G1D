@@ -64,5 +64,36 @@ description, typed parameters with bounds and defaults, and `steps` (`{"action":
 `{"repeat": "$param", "steps": [...]}`). `$name` values are substituted from the parameters. Shipped:
 `ready_pose`, `wave(times)`, `grasp(hold_s)`, `park`.
 
-Not in yet: the MCP client and local LLM (next step), loop-1 `set_task`, a control token so only one source
-drives motion at a time.
+## Client and local LLM
+
+`services/mcp/g1d_agent.py` is the MCP client and agent loop (stdlib only). It starts `g1d_mcp.py` over stdio
+and talks to any OpenAI-style chat endpoint; the default is a local `llama-server` on **:8081** (:8080 is the
+simulator's web view).
+
+```
+llama-server -m <model>.gguf --jinja --port 8081 -c 8192        # --jinja: the model's own tool-call template
+python3 services/mcp/g1d_agent.py                               # prompt> wave twice
+python3 services/mcp/g1d_agent.py --once "arma il robot"
+```
+
+Client-side guardrails (the PEP stays the final check):
+
+- `stop`, `halt`, `ferma`, `estop`, `e-stop`, `emergenza` go straight to the stop/estop tool, without the LLM.
+- `execute_plan` runs only for a plan received in this session, after the steps are shown and the human
+  answers `y`. A plan the human rejects is dropped.
+- Prompts over 500 characters are refused; at most 8 tool calls per prompt.
+
+## Choosing the model
+
+`scripts/agent_eval.py` sends 25 prompts (English and Italian: single commands, skills, sequences, and
+requests that must be refused) and scores the model's first tool call. Nothing is executed, so no twin is
+needed. Run it once per model and keep the smallest one that passes:
+
+```
+python3 scripts/agent_eval.py --llm_url http://127.0.0.1:8081/v1 --out data/eval-qwen3-4b.json
+```
+
+Candidates for a CPU (quantized Q4_K_M): Qwen3 4B Instruct (~2.5 GB), Qwen3 8B (~5 GB), Phi-4-mini (~2.5 GB).
+
+Not in yet: loop-1 `set_task`, a control token so only one source drives motion at a time, a Prompt panel
+on the :3000 page. The conversation history is not trimmed (fine for a demo session; trim for long runs).

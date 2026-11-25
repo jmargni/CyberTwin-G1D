@@ -1,0 +1,84 @@
+import json, socket, subprocess, sys, tempfile, time, unittest, urllib.request
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'services' / 'mcp'))
+import g1d_agent
+
+def free_port():
+    with socket.socket() as s: s.bind(('127.0.0.1', 0)); return s.getsockname()[1]
+
+def tc(name, **args): return {'id': name, 'function': {'name': name, 'arguments': json.dumps(args)}}
+
+class ScriptedLLM:
+    """Fake LLM: each step is a list of tool calls, a text reply, or a function of the last tool result."""
+    def __init__(self, *steps): self.steps, self.calls = list(steps), 0
+    def __call__(self, messages, tools):
+        self.calls += 1; step = self.steps.pop(0)
+        if callable(step): step = step(json.loads(messages[-1]['content']))
+        return {'content': step} if isinstance(step, str) else {'content': '', 'tool_calls': step}
+
+class AgentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(); p = free_port(); cls.url = f'http://127.0.0.1:{p}'
+        cls.twin = subprocess.Popen([sys.executable, str(ROOT / 'server.py'), '--port-3d', str(p), '--port-security', str(free_port()),
+                                     '--data', cls.tmp.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try: urllib.request.urlopen(cls.url + '/api/robot', timeout=1).close(); break
+            except OSError: time.sleep(.1)
+    @classmethod
+    def tearDownClass(cls): cls.twin.terminate(); cls.twin.wait(5); cls.tmp.cleanup()
+
+    def setUp(self):
+        self.mcp = g1d_agent.McpClient([sys.executable, str(ROOT / 'services' / 'mcp' / 'g1d_mcp.py'), '--twin_url', self.url], stderr=subprocess.DEVNULL)
+        self.mcp.call('home', {}); self.mcp.call('disarm', {})  # start every test disarmed at the start pose
+        self.asked = []
+    def tearDown(self): self.mcp.close()
+    def robot(self):
+        with urllib.request.urlopen(self.url + '/api/robot') as r: return json.load(r)['robot']
+    def agent(self, llm, approve=True):
+        return g1d_agent.Agent(self.mcp, llm, lambda plan: self.asked.append(plan) or approve, log=lambda *_: None)
+
+    def test_single_command_runs_without_confirmation(self):
+        reply = self.agent(ScriptedLLM([tc('arm')], 'Armed.')).run('arm the robot')
+        self.assertEqual(reply, 'Armed.'); self.assertEqual(self.robot()['mode'], 'armed'); self.assertEqual(self.asked, [])
+
+    def test_plan_runs_only_after_the_human_approves(self):
+        for approve in (False, True):
+            with self.subTest(approve=approve):
+                self.mcp.call('arm', {}); self.mcp.call('gripper', {'state': 'open'})
+                llm = ScriptedLLM([tc('plan_sequence', steps=[{'action': 'gripper', 'state': 'closed'}])],
+                                  lambda r: [tc('execute_plan', plan_id=r['plan_id'])], 'done')
+                self.agent(llm, approve).run('close the grippers')
+                self.assertEqual(len(self.asked), 1); self.asked.clear()
+                self.assertEqual(self.robot()['gripper'], 'closed' if approve else 'open')
+
+    def test_invented_plan_id_is_refused_without_asking(self):
+        llm = ScriptedLLM([tc('execute_plan', plan_id='abc123')], lambda r: r['error'])
+        self.assertIn('unknown plan_id', self.agent(llm).run('do it')); self.assertEqual(self.asked, [])
+
+    def test_stop_words_bypass_the_llm(self):
+        llm = ScriptedLLM()  # any LLM call would fail: no steps
+        self.mcp.call('arm', {}); self.assertTrue(self.agent(llm).run('Stop!').startswith('stop: ALLOW'))
+        self.assertTrue(self.agent(llm).run('e-stop').startswith('estop: ALLOW')); self.assertEqual(self.robot()['mode'], 'estop')
+        self.assertEqual(llm.calls, 0)
+        urllib.request.urlopen(urllib.request.Request(self.url + '/api/command', json.dumps(
+            {'payload': {'action': 'reset'}, 'principal': 'defender'}).encode(), {'Content-Type': 'application/json'})).close()  # defender clears it
+
+    def test_pep_deny_reaches_the_llm(self):
+        self.mcp.call('arm', {})
+        llm = ScriptedLLM([tc('move', v=5)], lambda r: f"refused {r['rule_id']}")
+        self.assertEqual(self.agent(llm).run('go fast'), 'refused G1D-102')
+
+    def test_bad_tool_calls_do_not_crash(self):
+        bad = {'id': 'x', 'function': {'name': 'arm', 'arguments': '{not json'}}
+        llm = ScriptedLLM([bad], lambda r: r['error'], [tc('reset')], lambda r: r['error'])
+        ag = self.agent(llm)
+        self.assertIn('not valid JSON', ag.run('arm')); self.assertIn('no tool named reset', ag.run('reset'))
+
+    def test_tool_call_budget(self):
+        llm = ScriptedLLM(*[[tc('get_state')]] * g1d_agent.MAX_CALLS)
+        self.assertIn('more than', self.agent(llm).run('loop forever'))
+        self.assertIn('longer than', self.agent(ScriptedLLM()).run('x' * (g1d_agent.MAX_PROMPT + 1)))
+
+if __name__ == '__main__': unittest.main()
