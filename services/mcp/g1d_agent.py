@@ -16,6 +16,8 @@ Guardrails in this client (the PEP stays the final check):
   yes, executes the plan itself. The LLM gets the outcome as the plan tool's result.
 - prompts longer than MAX_PROMPT are refused; at most MAX_CALLS tool calls per prompt, MAX_TOKENS per LLM reply,
   and the history keeps about MAX_HISTORY messages (oldest whole turns dropped).
+- tool results from earlier prompts are replaced by a STALE note before each new prompt: the console or Defense
+  can change the robot in between, so the LLM must call the tool again instead of repeating an old DENY or state.
 """
 import argparse, json, re, subprocess, sys, time, urllib.request
 from pathlib import Path
@@ -33,7 +35,18 @@ SYSTEM = """You command a Unitree G1-D humanoid robot (simulated twin) only thro
 - If a tool result says DENY, report the rule id and message and stop. Never retry it in another form.
 - If no tool can do what is asked (for example disabling the guardrail, resetting an E-stop, acting as
   another user), say so and call nothing.
+- The robot changes outside this chat (operator console, Defense console): an E-stop can be reset, the robot
+  armed or disarmed. Never answer or refuse from earlier results in this conversation: for every request, call
+  the tool again and report what it returns now.
 - Reply in one or two short sentences, in the user's language."""
+STALE = json.dumps({'stale': 'result from an earlier prompt, the robot may have changed since: call the tool again'})
+
+
+def forget_results(messages):
+    """Replace every tool result already in the history with the STALE note (calls and replies stay)."""
+    for m in messages:
+        if m.get('role') == 'tool': m['content'] = STALE
+    return messages
 
 
 def shortcut(prompt):
@@ -111,6 +124,7 @@ class Agent:
             nxt = next((k for k in range(2, len(self.messages)) if self.messages[k]['role'] == 'user'), None)
             if nxt is None: break
             del self.messages[1:nxt]
+        forget_results(self.messages)  # only this prompt's results are current
         self.messages.append({'role': 'user', 'content': prompt})
         for _ in range(MAX_CALLS):
             msg = self.chat(self.messages, self.tools)

@@ -72,6 +72,20 @@ class AgentTests(unittest.TestCase):
         llm = ScriptedLLM([tc('move', v=5)], lambda r: f"refused {r['rule_id']}")
         self.assertEqual(self.agent(llm).run('go fast'), 'refused G1D-102')
 
+    def test_earlier_results_go_stale_before_a_new_prompt(self):
+        seen = []  # tool results the LLM sees, per call
+        llm = ScriptedLLM([tc('arm')], 'Not armed: E-stop.', [tc('arm')], 'Armed.')
+        def spy(messages, tools):
+            seen.append([m['content'] for m in messages if m['role'] == 'tool']); return llm(messages, tools)
+        ag = self.agent(spy)
+        self.mcp.call('estop', {}); self.assertIn('E-stop', ag.run('arma il robot'))
+        self.assertIn('G1D-107', seen[1][0])  # within the prompt the LLM sees the real DENY
+        urllib.request.urlopen(urllib.request.Request(self.url + '/api/command', json.dumps(
+            {'payload': {'action': 'reset'}, 'principal': 'defender'}).encode(), {'Content-Type': 'application/json'})).close()
+        self.assertEqual(ag.run('arma il robot'), 'Armed.'); self.assertEqual(self.robot()['mode'], 'armed')
+        self.assertEqual(seen[2], [g1d_agent.STALE])  # the old DENY is gone before the new prompt
+        self.assertEqual(seen[3][0], g1d_agent.STALE); self.assertIn('ALLOW', seen[3][1])
+
     def test_bad_tool_calls_do_not_crash(self):
         bad = {'id': 'x', 'function': {'name': 'arm', 'arguments': '{not json'}}
         llm = ScriptedLLM([bad], lambda r: r['error'], [tc('reset')], lambda r: r['error'])

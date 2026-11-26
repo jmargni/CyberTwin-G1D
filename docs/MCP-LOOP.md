@@ -67,7 +67,7 @@ simulator executes arm and gripper commands; `move` and `height` change the twin
 | Layer | Control |
 |---|---|
 | Prompt page | same-origin POST only, body ≤ 4 KiB, one prompt at a time (a new prompt cancels a pending plan); binds to 127.0.0.1 unless `BIND`/`--host` says otherwise |
-| Agent | prompts ≤ 500 characters, ≤ 8 tool calls per prompt, ≤ 512 tokens per LLM reply, history trimmed to ~40 messages; the LLM can't execute plans; stop/E-stop bypass the LLM and use a second MCP connection, so they work while a plan runs |
+| Agent | prompts ≤ 500 characters, ≤ 8 tool calls per prompt, ≤ 512 tokens per LLM reply, history trimmed to ~40 messages; tool results from earlier prompts are marked stale before each new prompt (the console or Defense may have changed the robot), so the LLM calls the tool again instead of repeating an old DENY; the LLM can't execute plans; stop/E-stop bypass the LLM and use a second MCP connection, so they work while a plan runs |
 | MCP server | fixed identity (`assistant`), `request_id`, `timestamp`, `target` and `via`; strict argument schemas (unknown fields, wrong types and wheel joints are refused); no reset/enforce/restore/defense/trajectory tools; plans are single use and expire after 120 s; waits are ≤ 10 s |
 | PEP | the real limits: speed, URDF, geofence, armed state, E-stop latch; own rate limit (G1D-110) and lockout (G1D-111) for `assistant`, so a misbehaving LLM is quarantined while the human operator stays free |
 | Audit | hash-chained `events.jsonl` → SIEM page and Wazuh |
@@ -152,8 +152,8 @@ Watch the decisions on the SIEM page (http://localhost:3000/#siem, principal `as
 python3 scripts/agent_eval.py --llm_url http://127.0.0.1:8081/v1 --out data/eval-qwen3-4b.json
 ```
 
-The eval has 25 English/Italian prompts and scores each model's first tool call without executing anything.
-Qwen3 4B scored 25/25.
+The eval has 27 English/Italian prompts (two of them follow an earlier turn, e.g. `arma il robot` after an E-stop DENY, and must call the tool again) and scores each model's first tool call without executing anything.
+Qwen3 4B scored 25/25 on the first 25; the two follow-up cases pass on their own (full 27-case run pending).
 
 ## Known limits
 
