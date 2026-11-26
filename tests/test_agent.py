@@ -1,4 +1,4 @@
-import json, socket, subprocess, sys, tempfile, time, unittest, urllib.request
+import json, os, socket, subprocess, sys, tempfile, time, unittest, urllib.request
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'services' / 'mcp'))
@@ -21,8 +21,11 @@ class AgentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(); p = free_port(); cls.url = f'http://127.0.0.1:{p}'
+        pol = Path(cls.tmp.name) / 'policy.json'  # the tests share one twin: lift G1D-110, which test_engine covers
+        pol.write_text(json.dumps({'version': 'test', 'rules': {'rate': {'max_per_s': 10000}}}))
         cls.twin = subprocess.Popen([sys.executable, str(ROOT / 'server.py'), '--port-3d', str(p), '--port-security', str(free_port()),
-                                     '--data', cls.tmp.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                     '--data', cls.tmp.name], env={**os.environ, 'TWIN_POLICY': str(pol)},
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try: urllib.request.urlopen(cls.url + '/api/robot', timeout=1).close(); break
             except OSError: time.sleep(.1)
@@ -105,10 +108,6 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(ag.messages[-4]['content'], 'state 29')
 
     def test_web_session_parks_the_plan_until_the_browser_decides(self):
-        # The tests share one twin: earlier denials may have locked assistant out (G1D-111); clear it as Defense would.
-        urllib.request.urlopen(urllib.request.Request(self.url + '/api/command', json.dumps(
-            {'payload': {'action': 'restore'}, 'principal': 'defender'}).encode(), {'Content-Type': 'application/json'})).close()
-        time.sleep(1.1)  # and start in a fresh G1D-110 (20 commands/s) window
         self.mcp.call('arm', {}); self.mcp.call('gripper', {'state': 'open'})
         plan = [tc('plan_sequence', steps=[{'action': 'gripper', 'state': 'closed'}])]
         llm = ScriptedLLM(plan, lambda r: f"approved={r['approved']}", plan, lambda r: f"approved={r['approved']}")
