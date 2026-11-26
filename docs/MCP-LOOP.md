@@ -153,7 +153,7 @@ python3 scripts/agent_eval.py --llm_url http://127.0.0.1:8081/v1 --out data/eval
 ```
 
 The eval has 27 English/Italian prompts (two of them follow an earlier turn, e.g. `arma il robot` after an E-stop DENY, and must call the tool again) and scores each model's first tool call without executing anything.
-Qwen3 4B scored 25/25 on the first 25; the two follow-up cases pass on their own (full 27-case run pending).
+Qwen3 4B scored 27/27 (about 14 s per prompt on a 4-core laptop CPU, `-c 4096 -t 4`).
 
 ## Known limits
 
