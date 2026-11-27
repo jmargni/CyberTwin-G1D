@@ -26,12 +26,23 @@ HEADLESS=""; [ -z "${DISPLAY:-}" ] && HEADLESS=" --headless"   # no X display ->
 BIND="${BIND:-127.0.0.1}"   # set BIND=0.0.0.0 to reach twin/SIEM/sim views from another PC (exposes them on the LAN)
 # Bake the absolute conda path into every window (a tmux window's fresh shell may not have conda on PATH).
 SRC="source $(conda info --base)/etc/profile.d/conda.sh"
-ACT="$SRC && conda activate unitree_deploy && cd $SCRIPTS"
+# The sim env may live under another conda install than the one on PATH (e.g. anaconda3 vs miniforge3):
+# activate it by path, so the name lookup of the active conda doesn't matter. Override with DEPLOY_ENV=...
+if [ -z "${DEPLOY_ENV:-}" ]; then
+  for d in "$(conda info --base)/envs/unitree_deploy" "$HOME"/{anaconda3,miniconda3,miniforge3}/envs/unitree_deploy; do
+    [ -d "$d" ] && DEPLOY_ENV="$d" && break
+  done
+fi
+[ -n "${DEPLOY_ENV:-}" ] || { echo "conda env unitree_deploy not found; set DEPLOY_ENV=/path/to/env"; exit 1; }
+ACT="$SRC && conda activate $DEPLOY_ENV && cd $SCRIPTS"
 
 # Prompt control (docs/MCP-LOOP.md): local LLM on :8081 + prompt page on :3002. PROMPT=0 leaves it out.
 PROMPT="${PROMPT:-1}"
 LLAMA="${LLAMA:-$HOME/llama.cpp/build/bin/llama-server}"
 LLM_MODEL="${LLM_MODEL:-$HOME/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf}"
+# Remote model instead (e.g. Ollama on the DGX through an ssh tunnel): no llama-server window.
+#   LLM_URL=http://127.0.0.1:11434/v1 LLM_NAME=qwen3.6:35b-a3b bash scripts/demo_command.sh
+LLM_URL="${LLM_URL:-}"; LLM_NAME="${LLM_NAME:-local}"
 
 case "$MODE" in
   packing) MODEL_WIN=replay;  LOOP=model;   MODEL_CMD="python replay_policy_server.py --cover --loop";;
@@ -52,11 +63,12 @@ tmux new-window      -t $SESSION -n client "$ACT && sleep 6 && UNITREE_IMAGE_SER
 
 # 5-6. prompt control: llama-server (skipped if one already answers on :8081) and the prompt page
 if [ "$PROMPT" = 1 ]; then
-  if curl -sf -m 2 http://127.0.0.1:8081/health >/dev/null; then echo "llama-server already up on :8081, reusing it"
+  if [ -n "$LLM_URL" ]; then echo "using the LLM at $LLM_URL (model $LLM_NAME)"
+  elif curl -sf -m 2 http://127.0.0.1:8081/health >/dev/null; then echo "llama-server already up on :8081, reusing it"
   elif [ -x "$LLAMA" ] && [ -f "$LLM_MODEL" ]; then
     tmux new-window -t $SESSION -n llm "$LLAMA -m $LLM_MODEL --jinja --host 127.0.0.1 --port 8081 -c 8192 -t 10; read"
   else echo "no llama-server/model (LLAMA=$LLAMA LLM_MODEL=$LLM_MODEL): the prompt page will answer with an LLM error"; fi
-  tmux new-window -t $SESSION -n prompt "$SRC && conda activate base && cd $TWIN && sleep 3 && python services/mcp/g1d_web.py --host $BIND --loop $LOOP; read"
+  tmux new-window -t $SESSION -n prompt "$SRC && conda activate base && cd $TWIN && sleep 3 && python services/mcp/g1d_web.py --host $BIND --loop $LOOP --llm_url ${LLM_URL:-http://127.0.0.1:8081/v1} --model $LLM_NAME; read"
 fi
 
 cat <<EOF

@@ -95,7 +95,8 @@ def llm_chat(url, model='local', timeout=180):
     def chat(messages, tools):
         body = {'model': model, 'messages': messages, 'tools': tools, 'tool_choice': 'auto', 'temperature': 0,
                 'max_tokens': MAX_TOKENS,  # a looping model must not hold the robot's prompt for minutes
-                'chat_template_kwargs': {'enable_thinking': False}}  # Qwen3 hybrids: answer, don't think aloud
+                'chat_template_kwargs': {'enable_thinking': False},  # Qwen3 hybrids: answer, don't think aloud (llama-server)
+                'reasoning_effort': 'none'}  # same for Ollama, which ignores the above: thinking ate the whole max_tokens
         req = urllib.request.Request(url.rstrip('/') + '/chat/completions', json.dumps(body).encode(),
                                      {'Content-Type': 'application/json'})
         with urllib.request.urlopen(req, timeout=timeout) as r: msg = json.load(r)['choices'][0]['message']
