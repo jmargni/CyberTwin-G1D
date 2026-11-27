@@ -18,9 +18,9 @@
         {"action": "wait", "seconds": 1.5},
         {"repeat": "$times", "steps": [
           {"action": "joint", "name": "right_elbow_joint", "value": 1.4},
-          {"action": "wait", "seconds": 1},
+          {"action": "wait", "seconds": 3},
           {"action": "joint", "name": "right_elbow_joint", "value": 0.3},
-          {"action": "wait", "seconds": 1}
+          {"action": "wait", "seconds": 3}
         ]},
         {"action": "home"}
       ]
